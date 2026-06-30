@@ -1,0 +1,25 @@
+use std::path::PathBuf;
+
+use tempfile::tempdir;
+
+use runtime_worker::runtime::{Executable, NativeProcessRunner, RuntimeCommand};
+
+#[test]
+fn runs_python_program() {
+    let dir = tempdir().unwrap();
+
+    std::fs::write(dir.path().join("main.py"), r#"print("Hello World")"#).unwrap();
+
+    let executable = Executable {
+        path: PathBuf::from("python3"),
+    };
+    let result = NativeProcessRunner::run(RuntimeCommand {
+        executable: executable,
+        args: vec!["main.py".to_string()],
+        working_directory: dir.path().to_path_buf(),
+        stdin: Vec::new(),
+    })
+    .unwrap();
+
+    assert_eq!(String::from_utf8(result.stdout).unwrap(), "Hello World\n");
+}

@@ -3,7 +3,7 @@ pub mod error;
 pub mod execution;
 pub mod language;
 pub mod model;
-pub mod process;
+pub mod runtime;
 pub mod workspace;
 
 mod util;
