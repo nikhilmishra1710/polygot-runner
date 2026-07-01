@@ -12,8 +12,9 @@ fn creates_workspace_with_files() {
         }],
         stdin: Vec::new(),
     };
-
-    let workspace = WorkspaceManager::create(&request).unwrap();
+    
+    let manager = WorkspaceManager::new();
+    let workspace = manager.create(&request).unwrap();
 
     let file = workspace.path().join("main.py");
 

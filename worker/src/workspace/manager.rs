@@ -7,7 +7,11 @@ use super::Workspace;
 pub struct WorkspaceManager;
 
 impl WorkspaceManager {
-    pub fn create(request: &ExecutionRequest) -> io::Result<Workspace> {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn create(&self, request: &ExecutionRequest) -> io::Result<Workspace> {
         let workspace = Workspace::new()?;
 
         for file in &request.files {

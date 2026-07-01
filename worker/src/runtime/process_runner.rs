@@ -10,7 +10,11 @@ use super::RuntimeCommand;
 pub struct NativeProcessRunner;
 
 impl NativeProcessRunner {
-    pub fn run(command: RuntimeCommand) -> io::Result<ExecutionResult> {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn run(&self, command: RuntimeCommand) -> io::Result<ExecutionResult> {
         let mut child = Command::new(&command.executable.path)
             .args(&command.args)
             .current_dir(&command.working_directory)

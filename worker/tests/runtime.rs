@@ -13,7 +13,8 @@ fn runs_python_program() {
     let executable = Executable {
         path: PathBuf::from("python3"),
     };
-    let result = NativeProcessRunner::run(RuntimeCommand {
+    let runtime = NativeProcessRunner::new();
+    let result = runtime.run(RuntimeCommand {
         executable: executable,
         args: vec!["main.py".to_string()],
         working_directory: dir.path().to_path_buf(),
