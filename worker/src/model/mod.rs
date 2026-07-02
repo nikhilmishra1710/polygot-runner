@@ -1,9 +1,11 @@
+mod execution_plan;
 mod execution_request;
 mod execution_result;
 mod execution_status;
 mod language;
 mod source_file;
 
+pub use execution_plan::ExecutionPlan;
 pub use execution_request::ExecutionRequest;
 pub use execution_result::ExecutionResult;
 pub use execution_status::ExecutionStatus;

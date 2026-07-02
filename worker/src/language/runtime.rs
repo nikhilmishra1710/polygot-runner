@@ -1,5 +1,13 @@
-use crate::{model::ExecutionRequest, runtime::RuntimeCommand, workspace::Workspace};
+use crate::{
+    error::WorkerError,
+    model::{ExecutionPlan, ExecutionRequest},
+    workspace::Workspace,
+};
 
 pub trait LanguageRuntime: Send + Sync {
-    fn build_command(&self, request: &ExecutionRequest, workspace: &Workspace) -> RuntimeCommand;
+    fn prepare(
+        &self,
+        request: &ExecutionRequest,
+        workspace: &Workspace,
+    ) -> Result<ExecutionPlan, WorkerError>;
 }

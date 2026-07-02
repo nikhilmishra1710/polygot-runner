@@ -1,3 +1,5 @@
+use std::io::Error;
+
 use crate::{
     error::WorkerError,
     language::RuntimeRegistry,
@@ -21,17 +23,24 @@ impl ExecutionEngine {
         }
     }
 
-    pub fn execute(
-        &self,
-        request: &ExecutionRequest,
-    ) -> Result<ExecutionResult, WorkerError> {
+    pub fn execute(&self, request: &ExecutionRequest) -> Result<ExecutionResult, WorkerError> {
         let workspace = self.workspace_manager.create(request)?;
 
         let runtime = self.runtime_registry.get(request.language);
 
-        let command = runtime.build_command(request, &workspace);
+        let plan = runtime.prepare(request, &workspace).unwrap();
 
-        let result = self.process_runner.run(command)?;
+        if let Some(complie) = plan.compile {
+            let result = self.process_runner.run(complie);
+            let Ok(_) = result else {
+                eprintln!("Some error occured");
+                return Err(WorkerError::Io(Error::new(
+                    std::io::ErrorKind::Other,
+                    "Some error occured in compilation",
+                )));
+            };
+        }
+        let result = self.process_runner.run(plan.execute)?;
 
         Ok(result)
     }
