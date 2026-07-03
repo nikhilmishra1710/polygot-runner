@@ -39,6 +39,7 @@ impl ExecutionEngine {
                     "Some error occured in compilation",
                 )));
             };
+            println!("compilation completed!!");
         }
         let result = self.process_runner.run(plan.execute)?;
 
