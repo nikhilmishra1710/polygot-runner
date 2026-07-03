@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use crate::{
     error::WorkerError,
     model::{ExecutionPlan, ExecutionRequest},
-    runtime::{Executable, RuntimeCommand},
+    runtime::{RuntimeCommand},
+    toolchain::Executable,
     workspace::Workspace,
 };
 

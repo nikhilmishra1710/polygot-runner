@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use tempfile::tempdir;
 
-use runtime_worker::runtime::{Executable, NativeProcessRunner, RuntimeCommand};
+use runtime_worker::{
+    runtime::{NativeProcessRunner, RuntimeCommand},
+    toolchain::Executable,
+};
 
 #[test]
 fn runs_python_program() {
@@ -14,13 +17,14 @@ fn runs_python_program() {
         path: PathBuf::from("python3"),
     };
     let runtime = NativeProcessRunner::new();
-    let result = runtime.run(RuntimeCommand {
-        executable: executable,
-        args: vec!["main.py".to_string()],
-        working_directory: dir.path().to_path_buf(),
-        stdin: Vec::new(),
-    })
-    .unwrap();
+    let result = runtime
+        .run(RuntimeCommand {
+            executable: executable,
+            args: vec!["main.py".to_string()],
+            working_directory: dir.path().to_path_buf(),
+            stdin: Vec::new(),
+        })
+        .unwrap();
 
     assert_eq!(String::from_utf8(result.stdout).unwrap(), "Hello World\n");
 }

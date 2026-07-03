@@ -4,6 +4,7 @@ pub mod execution;
 pub mod language;
 pub mod model;
 pub mod runtime;
+pub mod toolchain;
 pub mod workspace;
 
 mod util;

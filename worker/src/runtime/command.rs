@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
-#[derive(Debug)]
-pub struct Executable {
-    pub path: PathBuf,
-}
+use crate::toolchain::Executable;
+
 
 #[derive(Debug)]
 pub struct RuntimeCommand {
