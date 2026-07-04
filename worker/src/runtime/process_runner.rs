@@ -1,5 +1,6 @@
 use std::{
     io::Write,
+    os::unix::process::CommandExt,
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -8,7 +9,9 @@ use std::{
 use crate::{
     error::WorkerError,
     model::{ExecutionResult, ExecutionStatus},
-    runtime::{EventPipeline, Stream, reader::spawn_reader},
+    runtime::{
+        EventPipeline, Stream, create_process_group, kill_process_group_id, reader::spawn_reader,
+    },
 };
 
 use super::RuntimeCommand;
@@ -29,6 +32,7 @@ impl NativeProcessRunner {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .process_group(0)
             .spawn()?;
 
         if let Some(mut stdin) = child.stdin.take() {
@@ -65,12 +69,22 @@ impl NativeProcessRunner {
             }
 
             if start.elapsed() >= command.wall_time {
-                child.kill()?;
+                kill_process_group_id(child.id())?;
                 child.wait()?;
 
+                stdout_handle
+                    .join()
+                    .map_err(|_| std::io::Error::other("stdout reader panicked"))??;
+
+                stderr_handle
+                    .join()
+                    .map_err(|_| std::io::Error::other("stderr reader panicked"))??;
+
+                let (stdout, stderr) = pipeline.finish()?.into_output();
+
                 return Ok(ExecutionResult {
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
+                    stdout: stdout,
+                    stderr: stderr,
                     exit_code: None,
                     status: ExecutionStatus::TimeLimitExceeded,
                 });
