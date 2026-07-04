@@ -1,10 +1,7 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use runtime_worker::{
-    language::{CppRuntime, LanguageRuntime},
-    model::{ExecutionRequest, Language, SourceFile},
-    toolchain::{Tool, ToolchainRegistry},
-    workspace::WorkspaceManager,
+    language::{CppRuntime, LanguageRuntime}, model::{ExecutionRequest, Language, ResourceLimits, SourceFile}, toolchain::{Tool, ToolchainRegistry}, workspace::WorkspaceManager,
 };
 
 #[test]
@@ -21,6 +18,9 @@ fn builds_cpp_command() {
             .to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
 
     let manager = WorkspaceManager::new();
@@ -52,6 +52,9 @@ fn builds_cpp_command_check_compile_not_none() {
             .to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
 
     let manager = WorkspaceManager::new();

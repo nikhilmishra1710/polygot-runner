@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use runtime_worker::model::*;
 
 #[test]
@@ -9,6 +11,9 @@ fn create_execution_request() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
 
     assert_eq!(request.language, Language::Python);

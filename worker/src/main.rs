@@ -1,9 +1,10 @@
 use clap::{Parser, ValueEnum};
 use runtime_worker::engine::ExecutionEngine;
-use runtime_worker::model::{ExecutionRequest, Language, SourceFile};
+use runtime_worker::model::{ExecutionRequest, Language, ResourceLimits, SourceFile};
 use std::fs::File;
 use std::io::prelude::*;
 use std::process;
+use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "polyrunner")]
@@ -47,6 +48,9 @@ fn main() {
                     language: Language::Cpp,
                     files: file_vector,
                     stdin: Vec::new(),
+                    limits: ResourceLimits {
+                        wall_time: Duration::from_secs(2),
+                    },
                 };
                 let engine = ExecutionEngine::new();
 

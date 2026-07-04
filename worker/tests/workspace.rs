@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, time::Duration};
 
 use runtime_worker::{model::*, workspace::WorkspaceManager};
 
@@ -11,6 +11,9 @@ fn creates_workspace_with_files() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
     
     let manager = WorkspaceManager::new();

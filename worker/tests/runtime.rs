@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use tempfile::tempdir;
 
@@ -23,6 +23,8 @@ fn runs_python_program() {
             args: vec!["main.py".to_string()],
             working_directory: dir.path().to_path_buf(),
             stdin: Vec::new(),
+
+            wall_time: Duration::from_secs(2),
         })
         .unwrap();
 

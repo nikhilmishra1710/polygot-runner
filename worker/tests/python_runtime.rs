@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use runtime_worker::{
     language::{LanguageRuntime, PythonRuntime},
-    model::{ExecutionRequest, Language, SourceFile},
+    model::{ExecutionRequest, Language, ResourceLimits, SourceFile},
     toolchain::{Tool, ToolchainRegistry},
     workspace::WorkspaceManager,
 };
@@ -14,6 +16,9 @@ fn builds_python_command() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
 
     let manager = WorkspaceManager::new();
@@ -39,6 +44,9 @@ fn builds_python_command_check_compile_none() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
+        limits: ResourceLimits {
+            wall_time: Duration::from_secs(2),
+        },
     };
 
     let manager = WorkspaceManager::new();

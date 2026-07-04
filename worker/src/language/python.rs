@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::{
     error::WorkerError,
     model::{ExecutionPlan, ExecutionRequest},
@@ -33,6 +31,7 @@ impl LanguageRuntime for PythonRuntime {
                 args: vec!["main.py".to_string()],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: request.stdin.clone(),
+                wall_time: request.limits.wall_time
             },
         })
     }
