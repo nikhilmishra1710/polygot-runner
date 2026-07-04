@@ -6,9 +6,7 @@ use std::{
 };
 
 use crate::{
-    error::WorkerError,
-    model::{ExecutionResult, ExecutionStatus},
-    runtime::ProcessRunner,
+    error::WorkerError, model::{ExecutionResult, ExecutionStatus}, runtime::{ProcessRunner, reader::{Stream, spawn_reader}},
 };
 
 use super::RuntimeCommand;
@@ -44,24 +42,15 @@ impl NativeProcessRunner {
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "stdout unavailable"))?;
+            .ok_or_else(|| std::io::Error::other("stdout unavailable"))?;
 
         let stderr = child
             .stderr
             .take()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "stderr unavailable"))?;
+            .ok_or_else(|| std::io::Error::other("stderr unavailable"))?;
 
-        let stdout_handle = thread::spawn(move || -> std::io::Result<Vec<u8>> {
-            let mut buffer = Vec::new();
-            BufReader::new(stdout).read_to_end(&mut buffer)?;
-            Ok(buffer)
-        });
-
-        let stderr_handle = thread::spawn(move || -> std::io::Result<Vec<u8>> {
-            let mut buffer = Vec::new();
-            BufReader::new(stderr).read_to_end(&mut buffer)?;
-            Ok(buffer)
-        });
+        let stdout_handle = spawn_reader(stdout, Stream::Stdout);
+        let stderr_handle = spawn_reader(stderr, Stream::Stderr);
 
         let start = Instant::now();
 
@@ -85,13 +74,16 @@ impl NativeProcessRunner {
             thread::sleep(POLL_INTERVAL);
         };
 
-        let stdout = stdout_handle
+        let stdout_consumer = stdout_handle
             .join()
-            .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
+            .map_err(|_| std::io::Error::other("stdout reader panicked"))??;
 
-        let stderr = stderr_handle
+        let stderr_consumer = stderr_handle
             .join()
-            .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+            .map_err(|_| std::io::Error::other("stderr reader panicked"))??;
+
+        let (stdout, _) = stdout_consumer.into_output();
+        let (_, stderr) = stderr_consumer.into_output();
 
         Ok(ExecutionResult {
             stdout: stdout,

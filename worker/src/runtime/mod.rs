@@ -3,6 +3,7 @@ mod consumer;
 mod event;
 mod process_runner;
 mod runner;
+mod reader;
 
 pub use command::RuntimeCommand;
 pub use consumer::{BufferedConsumer, EventConsumer};
