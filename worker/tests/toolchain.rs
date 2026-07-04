@@ -1,14 +1,12 @@
-use runtime_worker::toolchain::PythonToolchain;
+use runtime_worker::toolchain::{Tool, ToolchainRegistry};
 
 #[test]
 fn discovers_python() {
-    let toolchain =
-        PythonToolchain::from_environment().unwrap();
+    let tools = ToolchainRegistry::from_environment().unwrap();
 
-    assert!(
-        toolchain
-            .interpreter()
-            .path
-            .exists()
-    );
+    let python = tools.tool(Tool::Python);
+    assert!(python.path.exists());
+
+    let cpp = tools.tool(Tool::CppCompiler);
+    assert!(cpp.path.exists());
 }

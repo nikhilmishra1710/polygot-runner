@@ -3,11 +3,12 @@ use std::path::PathBuf;
 use runtime_worker::{
     language::{CppRuntime, LanguageRuntime},
     model::{ExecutionRequest, Language, SourceFile},
+    toolchain::{Tool, ToolchainRegistry},
     workspace::WorkspaceManager,
 };
 
 #[test]
-fn builds_python_command() {
+fn builds_cpp_command() {
     let request = ExecutionRequest {
         language: Language::Cpp,
         files: vec![SourceFile {
@@ -24,18 +25,21 @@ fn builds_python_command() {
 
     let manager = WorkspaceManager::new();
     let workspace = manager.create(&request).unwrap();
-
-    let runtime = CppRuntime;
+    let tools = ToolchainRegistry::from_environment().unwrap();
+    let runtime = CppRuntime::new(tools.tool(Tool::CppCompiler));
     let plan = runtime.prepare(&request, &workspace).unwrap();
 
     let compile = plan.compile.unwrap();
-    assert_eq!(compile.executable.path, PathBuf::from("g++"));
+    assert_eq!(
+        compile.executable.path,
+        tools.tool(Tool::CppCompiler).clone().path
+    );
     assert_eq!(plan.execute.executable.path, PathBuf::from("./a.out"));
     assert!(plan.execute.args.is_empty());
 }
 
 #[test]
-fn builds_python_command_check_compile_not_none() {
+fn builds_cpp_command_check_compile_not_none() {
     let request = ExecutionRequest {
         language: Language::Cpp,
         files: vec![SourceFile {
@@ -53,11 +57,16 @@ fn builds_python_command_check_compile_not_none() {
     let manager = WorkspaceManager::new();
     let workspace = manager.create(&request).unwrap();
 
-    let runtime = CppRuntime;
+    let tools = ToolchainRegistry::from_environment().unwrap();
+    let runtime = CppRuntime::new(tools.tool(Tool::CppCompiler));
     let plan = runtime.prepare(&request, &workspace).unwrap();
 
+    let compile = plan.compile.unwrap();
+    assert_eq!(
+        compile.executable.path,
+        tools.tool(Tool::CppCompiler).clone().path
+    );
     assert_eq!(plan.execute.executable.path, PathBuf::from("./a.out"));
-    assert!(!plan.compile.is_none());
     assert_eq!(plan.execute.stdin, request.stdin);
     assert_eq!(plan.execute.working_directory, workspace.path());
 }

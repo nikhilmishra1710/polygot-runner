@@ -1,8 +1,7 @@
-use std::path::PathBuf;
-
 use runtime_worker::{
     language::{LanguageRuntime, PythonRuntime},
     model::{ExecutionRequest, Language, SourceFile},
+    toolchain::{Tool, ToolchainRegistry},
     workspace::WorkspaceManager,
 };
 
@@ -20,10 +19,14 @@ fn builds_python_command() {
     let manager = WorkspaceManager::new();
     let workspace = manager.create(&request).unwrap();
 
-    let runtime = PythonRuntime;
+    let tools = ToolchainRegistry::from_environment().unwrap();
+    let runtime = PythonRuntime::new(tools.tool(Tool::Python));
     let plan = runtime.prepare(&request, &workspace).unwrap();
 
-    assert_eq!(plan.execute.executable.path, PathBuf::from("python3"));
+    assert_eq!(
+        plan.execute.executable.path,
+        tools.tool(Tool::Python).clone().path
+    );
     assert_eq!(plan.execute.args, vec!["main.py"]);
 }
 
@@ -41,10 +44,14 @@ fn builds_python_command_check_compile_none() {
     let manager = WorkspaceManager::new();
     let workspace = manager.create(&request).unwrap();
 
-    let runtime = PythonRuntime;
+    let tools = ToolchainRegistry::from_environment().unwrap();
+    let runtime = PythonRuntime::new(tools.tool(Tool::Python));
     let plan = runtime.prepare(&request, &workspace).unwrap();
 
-    assert_eq!(plan.execute.executable.path, PathBuf::from("python3"));
+    assert_eq!(
+        plan.execute.executable.path,
+        tools.tool(Tool::Python).clone().path
+    );
     assert_eq!(plan.execute.args, vec!["main.py"]);
     assert!(plan.compile.is_none());
     assert_eq!(plan.execute.stdin, request.stdin);

@@ -1,14 +1,26 @@
 use std::path::PathBuf;
 
 use crate::{
-    error::WorkerError, model::{ExecutionPlan, ExecutionRequest}, runtime::RuntimeCommand, toolchain::Executable, workspace::Workspace,
+    error::WorkerError,
+    model::{ExecutionPlan, ExecutionRequest},
+    runtime::RuntimeCommand,
+    toolchain::Executable,
+    workspace::Workspace,
 };
 
 use super::LanguageRuntime;
 
-pub struct PythonRuntime;
+pub struct PythonRuntime {
+    python: Executable,
+}
 
 impl LanguageRuntime for PythonRuntime {
+    fn new(python: &Executable) -> Self {
+        PythonRuntime {
+            python: python.clone(),
+        }
+    }
+
     fn prepare(
         &self,
         request: &ExecutionRequest,
@@ -17,9 +29,7 @@ impl LanguageRuntime for PythonRuntime {
         Ok(ExecutionPlan {
             compile: None,
             execute: RuntimeCommand {
-                executable: Executable {
-                    path: PathBuf::from("python3"),
-                },
+                executable: self.python.clone(),
                 args: vec!["main.py".to_string()],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: request.stdin.clone(),

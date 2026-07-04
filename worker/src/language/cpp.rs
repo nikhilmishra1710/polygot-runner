@@ -3,16 +3,24 @@ use std::path::PathBuf;
 use crate::{
     error::WorkerError,
     model::{ExecutionPlan, ExecutionRequest},
-    runtime::{RuntimeCommand},
+    runtime::RuntimeCommand,
     toolchain::Executable,
     workspace::Workspace,
 };
 
 use super::LanguageRuntime;
 
-pub struct CppRuntime;
+pub struct CppRuntime {
+    compiler: Executable,
+}
 
 impl LanguageRuntime for CppRuntime {
+    fn new(compiler: &Executable) -> Self {
+        Self {
+            compiler: compiler.clone(),
+        }
+    }
+
     fn prepare(
         &self,
         request: &ExecutionRequest,
@@ -20,9 +28,7 @@ impl LanguageRuntime for CppRuntime {
     ) -> Result<ExecutionPlan, WorkerError> {
         Ok(ExecutionPlan {
             compile: Some(RuntimeCommand {
-                executable: Executable {
-                    path: PathBuf::from("g++"),
-                },
+                executable: self.compiler.clone(),
                 args: vec!["main.cpp".to_string()],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: Vec::new(),

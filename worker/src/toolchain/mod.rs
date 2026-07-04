@@ -1,7 +1,7 @@
-mod cpp;
 mod executable;
-mod python;
+mod registry;
+mod tool;
 
-pub use cpp::CppToolchain;
 pub use executable::Executable;
-pub use python::PythonToolchain;
+pub use registry::ToolchainRegistry;
+pub use tool::Tool;
