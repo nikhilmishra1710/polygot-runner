@@ -1,28 +1,23 @@
 use std::{
     io::{BufReader, Read},
-    process::ChildStdout,
-    thread,
+    sync::mpsc,
+    thread::{self, JoinHandle},
 };
 
-use crate::runtime::{BufferedConsumer, EventConsumer, ExecutionEvent};
+use crate::runtime::{ExecutionEvent, Stream};
 
 const READ_BUFFER_SIZE: usize = 8 * 1024;
-
-pub enum Stream {
-    Stdout,
-    Stderr,
-}
 
 pub fn spawn_reader<R>(
     reader: R,
     stream: Stream,
-) -> thread::JoinHandle<std::io::Result<BufferedConsumer>>
+    sender: mpsc::Sender<ExecutionEvent>,
+) -> JoinHandle<std::io::Result<()>>
 where
     R: Read + Send + 'static,
 {
     thread::spawn(move || {
         let mut reader = BufReader::new(reader);
-        let mut consumer = BufferedConsumer::new();
         let mut buffer = [0u8; READ_BUFFER_SIZE];
 
         loop {
@@ -32,14 +27,14 @@ where
                 break;
             }
 
-            let event = match stream {
-                Stream::Stdout => ExecutionEvent::stdout(buffer[..bytes_read].to_vec()),
-                Stream::Stderr => ExecutionEvent::stderr(buffer[..bytes_read].to_vec()),
-            };
-
-            consumer.consume(event)?;
+            sender
+                .send(ExecutionEvent {
+                    stream: stream.clone(),
+                    bytes: buffer[..bytes_read].to_vec(),
+                })
+                .map_err(|_| std::io::Error::other("event receiver dropped"))?;
         }
 
-        Ok(consumer)
+        Ok(())
     })
 }

@@ -1,12 +1,14 @@
 use std::{
-    io::{BufReader, Read, Write},
+    io::Write,
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
 use crate::{
-    error::WorkerError, model::{ExecutionResult, ExecutionStatus}, runtime::{ProcessRunner, reader::{Stream, spawn_reader}},
+    error::WorkerError,
+    model::{ExecutionResult, ExecutionStatus},
+    runtime::{EventPipeline, Stream, reader::spawn_reader},
 };
 
 use super::RuntimeCommand;
@@ -49,8 +51,11 @@ impl NativeProcessRunner {
             .take()
             .ok_or_else(|| std::io::Error::other("stderr unavailable"))?;
 
-        let stdout_handle = spawn_reader(stdout, Stream::Stdout);
-        let stderr_handle = spawn_reader(stderr, Stream::Stderr);
+        let pipeline = EventPipeline::new();
+
+        let stdout_handle = spawn_reader(stdout, Stream::Stdout, pipeline.sender());
+
+        let stderr_handle = spawn_reader(stderr, Stream::Stderr, pipeline.sender());
 
         let start = Instant::now();
 
@@ -74,16 +79,15 @@ impl NativeProcessRunner {
             thread::sleep(POLL_INTERVAL);
         };
 
-        let stdout_consumer = stdout_handle
+        stdout_handle
             .join()
             .map_err(|_| std::io::Error::other("stdout reader panicked"))??;
 
-        let stderr_consumer = stderr_handle
+        stderr_handle
             .join()
             .map_err(|_| std::io::Error::other("stderr reader panicked"))??;
 
-        let (stdout, _) = stdout_consumer.into_output();
-        let (_, stderr) = stderr_consumer.into_output();
+        let (stdout, stderr) = pipeline.finish()?.into_output();
 
         Ok(ExecutionResult {
             stdout: stdout,
