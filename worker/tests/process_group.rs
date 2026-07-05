@@ -1,9 +1,11 @@
 use std::time::Duration;
-
+mod common;
 use runtime_worker::{
     engine::ExecutionEngine,
     model::{ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile},
 };
+
+use crate::common::wall_time_limit;
 
 #[test]
 fn timeout_kills_process_group() {
@@ -29,16 +31,16 @@ while True:
             contents: source.as_bytes().to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(1),
-        },
+        limits: wall_time_limit(Duration::from_secs(1)),
     };
 
     let result = engine.execute(&request).unwrap();
-
+    println!("status: {:?}", result.status);
+    println!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
+    println!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
+    println!("exit_code: {:?}", result.exit_code);
     assert_eq!(result.status, ExecutionStatus::TimeLimitExceeded);
 
-    println!("result: {}", String::from_utf8(result.stdout.clone()).unwrap());
     let pid = String::from_utf8(result.stdout)
         .unwrap()
         .trim()

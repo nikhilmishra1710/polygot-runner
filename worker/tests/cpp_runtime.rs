@@ -18,9 +18,7 @@ fn builds_cpp_command() {
             .to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     let manager = WorkspaceManager::new();
@@ -52,9 +50,7 @@ fn builds_cpp_command_check_compile_not_none() {
             .to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     let manager = WorkspaceManager::new();

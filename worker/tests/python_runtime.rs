@@ -16,9 +16,7 @@ fn builds_python_command() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     let manager = WorkspaceManager::new();
@@ -44,9 +42,7 @@ fn builds_python_command_check_compile_none() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     let manager = WorkspaceManager::new();

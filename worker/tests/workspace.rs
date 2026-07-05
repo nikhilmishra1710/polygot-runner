@@ -11,9 +11,7 @@ fn creates_workspace_with_files() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
     
     let manager = WorkspaceManager::new();

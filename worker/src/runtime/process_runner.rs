@@ -1,6 +1,6 @@
 use std::{
     io::Write,
-    os::unix::process::CommandExt,
+    os::unix::process::{CommandExt, ExitStatusExt},
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -8,9 +8,9 @@ use std::{
 
 use crate::{
     error::WorkerError,
-    model::{ExecutionResult, ExecutionStatus},
+    model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu},
     runtime::{
-        EventPipeline, Stream, create_process_group, kill_process_group_id, reader::spawn_reader,
+        EventPipeline, Stream, apply_resource_limits, kill_process_group_id, reader::spawn_reader,
     },
 };
 
@@ -26,14 +26,23 @@ impl NativeProcessRunner {
     }
 
     fn spawn(&self, command: &RuntimeCommand) -> Result<Child, WorkerError> {
-        let mut child = Command::new(&command.executable.path)
+        let mut process = Command::new(&command.executable.path);
+        process
             .args(&command.args)
             .current_dir(&command.working_directory)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()?;
+            .process_group(0);
+
+        let limits = command.limits.clone();
+        unsafe {
+            process.pre_exec(move || {
+                let _ = apply_resource_limits(&limits);
+                Ok(())
+            });
+        }
+        let mut child = process.spawn()?;
 
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(&command.stdin)?;
@@ -68,7 +77,7 @@ impl NativeProcessRunner {
                 break status;
             }
 
-            if start.elapsed() >= command.wall_time {
+            if start.elapsed() >= command.limits.wall_time {
                 kill_process_group_id(child.id())?;
                 child.wait()?;
 
@@ -103,15 +112,43 @@ impl NativeProcessRunner {
 
         let (stdout, stderr) = pipeline.finish()?.into_output();
 
+        let status = if exit_status.success() {
+            ExecutionStatus::Success
+        } else if let Some(signal) = exit_status.signal() {
+            match signal {
+                // Process exceeded its CPU time limit
+                libc::SIGXCPU => {
+                    println!("Process terminated by SIGXCPU (CPU time limit exceeded)");
+                    // Note: Assuming `Cpu` is imported/available in this scope based on your snippet
+                    ExecutionStatus::ResourceLimitExceeded(Cpu)
+                }
+
+                // Process was forcefully killed (OOM killer, manual kill, etc.)
+                libc::SIGKILL => {
+                    println!("Process terminated by SIGKILL (Forcefully killed)");
+                    ExecutionStatus::RuntimeError
+                }
+
+                // Catch any other signal and log its integer value
+                sig => {
+                    println!("Process terminated by unhandled Unix signal: {}", sig);
+                    ExecutionStatus::RuntimeError
+                }
+            }
+        } else {
+            // Standard non-zero exit code
+            println!(
+                "Process exited with standard non-zero code: {:?}",
+                exit_status.code()
+            );
+            ExecutionStatus::RuntimeError
+        };
+
         Ok(ExecutionResult {
             stdout: stdout,
             stderr: stderr,
             exit_code: exit_status.code(),
-            status: if exit_status.success() {
-                ExecutionStatus::Success
-            } else {
-                ExecutionStatus::RuntimeError
-            },
+            status: status,
         })
     }
 }

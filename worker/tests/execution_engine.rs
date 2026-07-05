@@ -1,8 +1,12 @@
+mod common;
 use std::time::Duration;
 
 use runtime_worker::{
-    engine::ExecutionEngine, model::{ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile},
+    engine::ExecutionEngine,
+    model::{ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile},
 };
+
+use crate::common::wall_time_limit;
 
 #[test]
 fn executes_python_program() {
@@ -15,9 +19,7 @@ fn executes_python_program() {
             contents: b"print('Hello from engine')".to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     let result = engine.execute(&request).unwrap();
@@ -39,12 +41,11 @@ fn executes_python_program_infinite_loop() {
         files: vec![SourceFile {
             path: "main.py".into(),
             contents: b"while True:
-                pass".to_vec(),
+                pass"
+                .to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(1),
-        },
+        limits: wall_time_limit(Duration::from_secs(2)),
     };
 
     let result = engine.execute(&request).unwrap();

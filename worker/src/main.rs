@@ -48,14 +48,14 @@ fn main() {
                     language: Language::Python,
                     files: file_vector,
                     stdin: Vec::new(),
-                    limits: ResourceLimits {
-                        wall_time: Duration::from_secs(2),
-                    },
+                    limits: ResourceLimits::default(),
                 };
                 let engine = ExecutionEngine::new();
 
                 let result = engine.execute(&request).unwrap();
                 println!("Output: {}", String::from_utf8(result.stdout).unwrap());
+                println!("Err: {}", String::from_utf8(result.stderr).unwrap());
+                println!("Status: {}", result.status);
                 process::exit(result.exit_code.unwrap_or(1));
             } else {
                 eprintln!("Error: A file is required when using 'execute' mode.");

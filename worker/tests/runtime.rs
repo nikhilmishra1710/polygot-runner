@@ -1,11 +1,12 @@
+mod common;
 use std::{path::PathBuf, time::Duration};
 
-use tempfile::tempdir;
-
+use crate::common::wall_time_limit;
 use runtime_worker::{
     runtime::{NativeProcessRunner, RuntimeCommand},
     toolchain::Executable,
 };
+use tempfile::tempdir;
 
 #[test]
 fn runs_python_program() {
@@ -24,7 +25,7 @@ fn runs_python_program() {
             working_directory: dir.path().to_path_buf(),
             stdin: Vec::new(),
 
-            wall_time: Duration::from_secs(2),
+            limits: wall_time_limit(Duration::from_secs(2)),
         })
         .unwrap();
 

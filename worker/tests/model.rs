@@ -11,9 +11,7 @@ fn create_execution_request() {
             contents: b"print('Hello')".to_vec(),
         }],
         stdin: Vec::new(),
-        limits: ResourceLimits {
-            wall_time: Duration::from_secs(2),
-        },
+        limits: ResourceLimits::default(),
     };
 
     assert_eq!(request.language, Language::Python);
