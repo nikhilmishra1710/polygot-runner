@@ -1,7 +1,5 @@
 use std::{
-    io::Write,
-    os::unix::process::{CommandExt, ExitStatusExt},
-    process::{Child, Command, Stdio},
+    os::unix::process::ExitStatusExt,
     thread,
     time::{Duration, Instant},
 };
@@ -10,7 +8,7 @@ use crate::{
     error::WorkerError,
     model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu},
     runtime::{
-        EventPipeline, Stream, apply_resource_limits, kill_process_group_id, reader::spawn_reader,
+        EventPipeline, ProcessLauncher, Stream, kill_process_group_id, reader::spawn_reader,
     },
 };
 
@@ -25,43 +23,15 @@ impl NativeProcessRunner {
         Self
     }
 
-    fn spawn(&self, command: &RuntimeCommand) -> Result<Child, WorkerError> {
-        let mut process = Command::new(&command.executable.path);
-        process
-            .args(&command.args)
-            .current_dir(&command.working_directory)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
-
-        let limits = command.limits.clone();
-        unsafe {
-            process.pre_exec(move || {
-                let _ = apply_resource_limits(&limits);
-                Ok(())
-            });
-        }
-        let mut child = process.spawn()?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(&command.stdin)?;
-        }
-
-        Ok(child)
-    }
-
     pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionResult, WorkerError> {
-        let mut child = self.spawn(&command).unwrap();
+        let mut child = ProcessLauncher::launch(&command)?;
 
         let stdout = child
-            .stdout
-            .take()
+            .take_stdout()
             .ok_or_else(|| std::io::Error::other("stdout unavailable"))?;
 
         let stderr = child
-            .stderr
-            .take()
+            .take_stderr()
             .ok_or_else(|| std::io::Error::other("stderr unavailable"))?;
 
         let pipeline = EventPipeline::new();
