@@ -6,6 +6,7 @@ pub mod model;
 pub mod runtime;
 pub mod toolchain;
 pub mod workspace;
+pub mod sandbox;
 
 mod util;
 

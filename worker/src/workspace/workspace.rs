@@ -1,24 +1,23 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use tempfile::TempDir;
+use crate::sandbox::Sandbox;
 
 pub struct Workspace {
-    root: TempDir,
+    sandbox: Sandbox,
 }
 
 impl Workspace {
-
     pub fn new() -> Result<Self, std::io::Error> {
         Ok(Workspace {
-            root: tempfile::tempdir()?,
+            sandbox: Sandbox::new().unwrap(),
         })
     }
-    
+
     pub fn path(&self) -> &Path {
-        self.root.path()
+        self.sandbox.workspace()
     }
 
-    pub fn into_path(self) -> PathBuf {
-        self.root.keep()
+    pub fn sandbox(&self) -> &Sandbox {
+        &self.sandbox
     }
 }
