@@ -9,6 +9,7 @@ use crate::{
     model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu},
     runtime::{
         EventPipeline, ProcessLauncher, Stream, kill_process_group_id, reader::spawn_reader,
+        std_backend::StdProcessBackend,
     },
 };
 
@@ -24,7 +25,9 @@ impl NativeProcessRunner {
     }
 
     pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionResult, WorkerError> {
-        let mut child = ProcessLauncher::launch(&command)?;
+        let launcher = ProcessLauncher::new(StdProcessBackend);
+
+        let mut child = launcher.launch(&command)?;
 
         let stdout = child
             .take_stdout()

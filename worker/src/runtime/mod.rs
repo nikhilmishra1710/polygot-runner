@@ -9,6 +9,8 @@ mod process_runner;
 mod reader;
 mod runner;
 mod unix;
+mod backend;
+mod std_backend;
 
 pub use command::RuntimeCommand;
 pub use consumer::{BufferedConsumer, EventConsumer};
