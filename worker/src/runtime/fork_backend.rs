@@ -1,20 +1,13 @@
 use crate::{
     error::WorkerError,
     runtime::{
-        ChildBootstrap, RunningProcess, RuntimeCommand,
+        ChildBootstrap, ChildCoordinator, ParentCoordinator, RunningProcess, RuntimeCommand,
         backend::ProcessBackend,
-        unix::{close, configure_child, pipe},
+        unix::{close, pipe},
     },
+    sandbox::NamespaceManager,
 };
-use std::{
-    ffi::CString,
-    io,
-    os::{
-        fd::{AsRawFd, OwnedFd},
-        unix::ffi::OsStrExt,
-    },
-    path::Path,
-};
+use std::io;
 
 pub struct ForkBackend;
 
@@ -25,6 +18,10 @@ impl ProcessBackend for ForkBackend {
         let stdin_pipe = pipe()?;
         let stdout_pipe = pipe()?;
         let stderr_pipe = pipe()?;
+        let parent_pipe = pipe()?;
+        let child_pipe = pipe()?;
+        let parent_coordinator = ParentCoordinator::new(parent_pipe.read, child_pipe.write)?;
+        let child_coodinator = ChildCoordinator::new(child_pipe.read, parent_pipe.write)?;
         let pid = unsafe { libc::fork() };
 
         match pid {
@@ -36,6 +33,11 @@ impl ProcessBackend for ForkBackend {
                 close(stdin_pipe.write);
                 close(stdout_pipe.read);
                 close(stderr_pipe.read);
+                println!("NamespaceManager start");
+                NamespaceManager::enter_user_namespace()?;
+                println!("NamespaceManager end");
+                child_coodinator.namespace_created()?;
+                child_coodinator.wait_for_parent()?;
 
                 ChildBootstrap::new(
                     command,
@@ -50,6 +52,11 @@ impl ProcessBackend for ForkBackend {
                 close(stdin_pipe.read);
                 close(stdout_pipe.write);
                 close(stderr_pipe.write);
+
+                parent_coordinator.wait_for_namespace()?;
+                NamespaceManager::finish_user_namespace(pid)?;
+                parent_coordinator.continue_child()?;
+
                 Ok(RunningProcess::from_fork(
                     pid,
                     Some(stdin_pipe.write),
@@ -59,38 +66,4 @@ impl ProcessBackend for ForkBackend {
             }
         }
     }
-}
-
-fn exec(executable: &Path, args: &[String]) -> io::Result<()> {
-    let exe = CString::new(executable.as_os_str().as_bytes())?;
-
-    let mut argv = Vec::with_capacity(args.len() + 1);
-
-    argv.push(exe.clone());
-
-    for arg in args {
-        argv.push(CString::new(arg.as_bytes())?);
-    }
-
-    let argv_ptrs: Vec<_> = argv
-        .iter()
-        .map(|s| s.as_ptr())
-        .chain(std::iter::once(std::ptr::null()))
-        .collect();
-
-    unsafe {
-        libc::execv(exe.as_ptr(), argv_ptrs.as_ptr());
-    }
-
-    Err(io::Error::last_os_error())
-}
-
-fn redirect(fd: &OwnedFd, target: libc::c_int) -> io::Result<()> {
-    let rc = unsafe { libc::dup2(fd.as_raw_fd(), target) };
-
-    if rc == -1 {
-        return Err(io::Error::last_os_error());
-    }
-
-    Ok(())
 }

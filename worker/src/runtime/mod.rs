@@ -12,6 +12,7 @@ mod process_runner;
 mod reader;
 mod runner;
 mod std_backend;
+mod sync_pipe;
 mod unix;
 
 pub use child_bootstrap::ChildBootstrap;
@@ -25,4 +26,5 @@ pub use limits::apply_resource_limits;
 pub use process::RunningProcess;
 pub use process_runner::NativeProcessRunner;
 pub use runner::ProcessRunner;
+pub use sync_pipe::{ChildCoordinator, ParentCoordinator};
 pub use unix::kill_process_group_id;

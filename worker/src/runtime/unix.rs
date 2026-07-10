@@ -3,7 +3,7 @@ use std::{io, os::fd::OwnedFd};
 
 use rustix::process::{Pid, Signal, getpgid, kill_process_group};
 
-use crate::{model::ResourceLimits, runtime::apply_resource_limits, sandbox::NamespaceManager};
+use crate::{model::ResourceLimits, runtime::apply_resource_limits};
 
 pub struct Pipe {
     pub read: OwnedFd,
@@ -28,7 +28,6 @@ pub fn create_process_group() -> io::Result<()> {
 
 pub fn configure_child(limits: &ResourceLimits) -> io::Result<()> {
     create_process_group()?;
-    NamespaceManager::setup().map_err(io::Error::other)?;
 
     apply_resource_limits(limits)?;
 
