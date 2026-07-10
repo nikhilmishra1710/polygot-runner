@@ -15,7 +15,7 @@ fn runs_python_program() {
     std::fs::write(dir.path().join("main.py"), r#"print("Hello World")"#).unwrap();
 
     let executable = Executable {
-        path: PathBuf::from("python3"),
+        path: PathBuf::from("/usr/bin/python3"),
     };
     let runtime = NativeProcessRunner::new();
     let result = runtime

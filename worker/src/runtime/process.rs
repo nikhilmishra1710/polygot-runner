@@ -1,43 +1,91 @@
-use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, ExitStatus};
+use std::{
+    fs::File,
+    io::Write,
+    os::{fd::OwnedFd, unix::process::ExitStatusExt},
+    process::{Child, ExitStatus},
+};
 
 pub struct RunningProcess {
-    child: Child,
+    pid: libc::pid_t,
+
+    stdin: Option<OwnedFd>,
+    stdout: Option<OwnedFd>,
+    stderr: Option<OwnedFd>,
 }
 
 impl RunningProcess {
-    pub fn new(child: Child) -> Self {
-        Self { child }
+    pub fn from_fork(
+        pid: libc::pid_t,
+        stdin: Option<OwnedFd>,
+        stdout: Option<OwnedFd>,
+        stderr: Option<OwnedFd>,
+    ) -> Self {
+        Self {
+            pid,
+            stdin,
+            stdout,
+            stderr,
+        }
     }
 
-    pub fn id(&self) -> u32 {
-        self.child.id()
+    pub fn from_child(mut child: Child) -> Self {
+        Self {
+            pid: child.id() as libc::pid_t,
+
+            stdin: child.stdin.take().map(OwnedFd::from),
+            stdout: child.stdout.take().map(OwnedFd::from),
+            stderr: child.stderr.take().map(OwnedFd::from),
+        }
+    }
+
+    pub fn pid(&self) -> libc::pid_t {
+        self.pid
+    }
+
+    pub fn stdin(&mut self) -> Option<OwnedFd> {
+        self.stdin.take()
+    }
+
+    pub fn stdout(&mut self) -> Option<File> {
+        self.stdout.take().map(File::from)
+    }
+
+    pub fn stderr(&mut self) -> Option<File> {
+        self.stderr.take().map(File::from)
     }
 
     pub fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
+        let mut status = 0;
+
+        let rc = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
+
+        if rc == -1 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        if rc == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(ExitStatus::from_raw(status)))
     }
 
     pub fn wait(&mut self) -> std::io::Result<ExitStatus> {
-        self.child.wait()
-    }
+        let mut status = 0;
 
-    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
-        self.child.stdout.take()
-    }
+        let rc = unsafe { libc::waitpid(self.pid, &mut status, 0) };
 
-    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
-        self.child.stderr.take()
-    }
+        if rc == -1 {
+            return Err(std::io::Error::last_os_error());
+        }
 
-    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
-        self.child.stdin.take()
+        Ok(ExitStatus::from_raw(status))
     }
 
     pub fn write_stdin(&mut self, input: &[u8]) -> std::io::Result<()> {
-        use std::io::Write;
-
-        if let Some(mut stdin) = self.child.stdin.take() {
-            stdin.write_all(input)?;
+        if let Some(fd) = self.stdin.take() {
+            let mut file = File::from(fd);
+            file.write_all(input)?;
         }
 
         Ok(())

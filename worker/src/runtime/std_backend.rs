@@ -1,27 +1,14 @@
 use std::{
-    io::{self},
     os::unix::process::CommandExt,
     process::{Command, Stdio},
 };
 
 use crate::{
     error::WorkerError,
-    model::ResourceLimits,
-    runtime::{RunningProcess, backend::ProcessBackend},
-    sandbox::NamespaceManager,
+    runtime::{RunningProcess, backend::ProcessBackend, unix::configure_child},
 };
 
-use super::{RuntimeCommand, apply_resource_limits};
-
-pub struct ProcessLauncher;
-
-fn configure_child(limits: &ResourceLimits) -> io::Result<()> {
-    NamespaceManager::setup().map_err(io::Error::other)?;
-
-    apply_resource_limits(limits)?;
-
-    Ok(())
-}
+use super::RuntimeCommand;
 
 pub struct StdProcessBackend;
 
@@ -34,8 +21,7 @@ impl ProcessBackend for StdProcessBackend {
             .current_dir(&command.working_directory)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0);
+            .stderr(Stdio::piped());
 
         let limits = command.limits.clone();
 
@@ -51,7 +37,7 @@ impl ProcessBackend for StdProcessBackend {
 
         let child = process.spawn()?;
 
-        let mut process = RunningProcess::new(child);
+        let mut process = RunningProcess::from_child(child);
 
         process.write_stdin(&command.stdin)?;
 

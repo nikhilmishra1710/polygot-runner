@@ -5,11 +5,8 @@ use std::{
 };
 
 use crate::{
-    error::WorkerError,
-    model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu},
-    runtime::{
-        EventPipeline, ProcessLauncher, Stream, kill_process_group_id, reader::spawn_reader,
-        std_backend::StdProcessBackend,
+    error::WorkerError, model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu}, runtime::{
+        EventPipeline, ForkBackend, ProcessLauncher, Stream, kill_process_group_id, reader::spawn_reader, std_backend::StdProcessBackend,
     },
 };
 
@@ -25,16 +22,16 @@ impl NativeProcessRunner {
     }
 
     pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionResult, WorkerError> {
-        let launcher = ProcessLauncher::new(StdProcessBackend);
+        let launcher = ProcessLauncher::new(ForkBackend);
 
-        let mut child = launcher.launch(&command)?;
+        let mut process = launcher.launch(&command)?;
 
-        let stdout = child
-            .take_stdout()
+        let stdout = process
+            .stdout()
             .ok_or_else(|| std::io::Error::other("stdout unavailable"))?;
 
-        let stderr = child
-            .take_stderr()
+        let stderr = process
+            .stderr()
             .ok_or_else(|| std::io::Error::other("stderr unavailable"))?;
 
         let pipeline = EventPipeline::new();
@@ -46,13 +43,13 @@ impl NativeProcessRunner {
         let start = Instant::now();
 
         let exit_status = loop {
-            if let Some(status) = child.try_wait()? {
+            if let Some(status) = process.try_wait()? {
                 break status;
             }
 
             if start.elapsed() >= command.limits.wall_time {
-                kill_process_group_id(child.id())?;
-                child.wait()?;
+                kill_process_group_id(process.pid() as u32)?;
+                process.wait()?;
 
                 stdout_handle
                     .join()
@@ -111,8 +108,10 @@ impl NativeProcessRunner {
         } else {
             // Standard non-zero exit code
             println!(
-                "Process exited with standard non-zero code: {:?}",
-                exit_status.code()
+                "Process exited with standard non-zero code: {:?} {:?} {:?}",
+                exit_status.code(),
+                stderr,
+                stdout
             );
             ExecutionStatus::RuntimeError
         };
