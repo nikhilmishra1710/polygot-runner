@@ -3,4 +3,4 @@ pub mod mount;
 mod namespace;
 
 pub use filesystem::Sandbox;
-pub use namespace::NamespaceManager;
+pub use namespace::{NamespaceManager, MountNamespace};

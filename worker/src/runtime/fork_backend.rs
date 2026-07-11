@@ -5,7 +5,7 @@ use crate::{
         backend::ProcessBackend,
         unix::{close, pipe},
     },
-    sandbox::NamespaceManager,
+    sandbox::{MountNamespace, NamespaceManager},
 };
 use std::io;
 
@@ -37,6 +37,8 @@ impl ProcessBackend for ForkBackend {
                 NamespaceManager::enter_user_namespace()?;
                 println!("NamespaceManager end");
                 child_coodinator.namespace_created()?;
+                MountNamespace::enter()?;
+                MountNamespace::make_private()?;
                 child_coodinator.wait_for_parent()?;
 
                 ChildBootstrap::new(

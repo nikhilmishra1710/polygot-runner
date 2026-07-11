@@ -52,3 +52,31 @@ impl NamespaceManager {
         Ok(())
     }
 }
+
+pub struct MountNamespace;
+
+impl MountNamespace {
+    pub fn enter() -> io::Result<()> {
+        let rc = unsafe { libc::unshare(libc::CLONE_NEWNS) };
+
+        if rc == -1 {
+            return Err(io::Error::last_os_error());
+        }
+
+        Ok(())
+    }
+
+    pub fn make_private() -> io::Result<()> {
+        unsafe {
+            libc::mount(
+                std::ptr::null(),
+                c"/".as_ptr(),
+                std::ptr::null(),
+                libc::MS_REC | libc::MS_PRIVATE,
+                std::ptr::null(),
+            );
+        };
+
+        Ok(())
+    }
+}

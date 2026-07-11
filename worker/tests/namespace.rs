@@ -11,8 +11,6 @@ import os
 print(os.getuid(), os.geteuid())
 "#;
 
-    // max_open_files = 32
-
     let result = execute_python(source, open_file_limit(8));
 
     assert_eq!(result.status, ExecutionStatus::Success);

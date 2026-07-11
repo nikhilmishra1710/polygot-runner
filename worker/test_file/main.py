@@ -1,4 +1,2 @@
-import os
-
-print(os.getuid())
-print(os.geteuid())
+with open("hello.txt") as f:
+    print(f.read())

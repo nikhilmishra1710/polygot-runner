@@ -3,6 +3,8 @@ use std::{
     os::fd::{AsRawFd, OwnedFd},
 };
 
+use crate::runtime::unix::pipe;
+
 pub struct ParentCoordinator {
     ready: OwnedFd,
     continue_fd: OwnedFd,
@@ -17,6 +19,7 @@ impl ChildCoordinator {
     pub fn new(ready: OwnedFd, continue_fd: OwnedFd) -> io::Result<Self> {
         Ok(Self { ready, continue_fd })
     }
+
     pub fn namespace_created(&self) -> io::Result<()> {
         let byte = [1u8];
 
@@ -28,6 +31,7 @@ impl ChildCoordinator {
 
         Ok(())
     }
+    
     pub fn wait_for_parent(&self) -> io::Result<()> {
         let mut byte = [0u8; 1];
 
@@ -52,6 +56,7 @@ impl ParentCoordinator {
     pub fn new(ready: OwnedFd, continue_fd: OwnedFd) -> io::Result<Self> {
         Ok(Self { ready, continue_fd })
     }
+
     pub fn wait_for_namespace(&self) -> io::Result<()> {
         let mut byte = [0u8; 1];
 
@@ -70,6 +75,7 @@ impl ParentCoordinator {
 
         Ok(())
     }
+    
     pub fn continue_child(&self) -> io::Result<()> {
         let byte = [1u8];
 
