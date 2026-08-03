@@ -1,12 +1,14 @@
 use std::{
-    os::unix::process::ExitStatusExt,
     thread,
     time::{Duration, Instant},
 };
 
 use crate::{
-    error::WorkerError, model::{ExecutionResult, ExecutionStatus, ResourceLimit::Cpu}, runtime::{
-        EventPipeline, ForkBackend, ProcessLauncher, Stream, kill_process_group_id, reader::spawn_reader, std_backend::StdProcessBackend,
+    error::WorkerError,
+    model::{ExecutionResult, ExecutionStatus},
+    runtime::{
+        EventPipeline, ForkBackend, ProcessLauncher, Stream, kill_process_group_id,
+        reader::spawn_reader, std_backend::StdProcessBackend,
     },
 };
 
@@ -84,27 +86,6 @@ impl NativeProcessRunner {
 
         let status = if exit_status.success() {
             ExecutionStatus::Success
-        } else if let Some(signal) = exit_status.signal() {
-            match signal {
-                // Process exceeded its CPU time limit
-                libc::SIGXCPU => {
-                    println!("Process terminated by SIGXCPU (CPU time limit exceeded)");
-                    // Note: Assuming `Cpu` is imported/available in this scope based on your snippet
-                    ExecutionStatus::ResourceLimitExceeded(Cpu)
-                }
-
-                // Process was forcefully killed (OOM killer, manual kill, etc.)
-                libc::SIGKILL => {
-                    println!("Process terminated by SIGKILL (Forcefully killed)");
-                    ExecutionStatus::RuntimeError
-                }
-
-                // Catch any other signal and log its integer value
-                sig => {
-                    println!("Process terminated by unhandled Unix signal: {}", sig);
-                    ExecutionStatus::RuntimeError
-                }
-            }
         } else {
             // Standard non-zero exit code
             println!(

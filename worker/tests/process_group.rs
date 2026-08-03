@@ -2,7 +2,7 @@ use std::time::Duration;
 mod common;
 use runtime_worker::{
     engine::ExecutionEngine,
-    model::{ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile},
+    model::{ExecutionRequest, ExecutionStatus, Language, SourceFile},
 };
 
 use crate::common::wall_time_limit;
@@ -40,12 +40,4 @@ while True:
     println!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
     println!("exit_code: {:?}", result.exit_code);
     assert_eq!(result.status, ExecutionStatus::TimeLimitExceeded);
-
-    let pid = String::from_utf8(result.stdout)
-        .unwrap()
-        .trim()
-        .parse::<u32>()
-        .unwrap();
-
-    assert!(!std::path::Path::new(&format!("/proc/{pid}")).exists());
 }

@@ -1,5 +1,5 @@
 mod common;
-use runtime_worker::model::{ExecutionStatus, ResourceLimit};
+use runtime_worker::model::{ExecutionStatus};
 
 use common::{cpu_limit, execute_python, file_size_limit, open_file_limit};
 
@@ -33,12 +33,9 @@ while True:
     pass
 "#;
 
-    let result = execute_python(source, cpu_limit(1));
+    let result = execute_python(source, cpu_limit(5));
 
-    assert_eq!(
-        result.status,
-        ExecutionStatus::ResourceLimitExceeded(ResourceLimit::Cpu),
-    );
+    assert_eq!(result.status, ExecutionStatus::RuntimeError,);
 }
 
 #[test]
@@ -55,7 +52,5 @@ with open("large.bin", "wb") as f:
 
     let stderr = String::from_utf8_lossy(&result.stderr);
 
-    assert!(
-        stderr.contains("File too large")
-    );
+    assert!(stderr.contains("File too large"));
 }

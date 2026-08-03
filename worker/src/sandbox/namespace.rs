@@ -67,15 +67,19 @@ impl MountNamespace {
     }
 
     pub fn make_private() -> io::Result<()> {
-        unsafe {
+        let rc = unsafe {
             libc::mount(
                 std::ptr::null(),
                 c"/".as_ptr(),
                 std::ptr::null(),
                 libc::MS_REC | libc::MS_PRIVATE,
                 std::ptr::null(),
-            );
+            )
         };
+
+        if rc == -1 {
+            return Err(io::Error::last_os_error());
+        }
 
         Ok(())
     }

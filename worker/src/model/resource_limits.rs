@@ -11,7 +11,7 @@ pub struct ResourceLimits {
 impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
-            wall_time: Duration::from_secs(5),
+            wall_time: Duration::from_secs(10),
             cpu_time: Duration::from_secs(5),
             max_open_files: 128,
             max_file_size: 10 * 1024 * 1024,

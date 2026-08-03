@@ -27,7 +27,6 @@ pub fn create_process_group() -> io::Result<()> {
 }
 
 pub fn configure_child(limits: &ResourceLimits) -> io::Result<()> {
-    create_process_group()?;
 
     apply_resource_limits(limits)?;
 

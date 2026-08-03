@@ -7,7 +7,10 @@ use std::{
     },
 };
 
-use crate::runtime::{RuntimeCommand, unix::configure_child};
+use crate::{
+    runtime::{RuntimeCommand, unix::configure_child},
+    sandbox::RootFilesystem,
+};
 
 pub struct ChildBootstrap<'a> {
     command: &'a RuntimeCommand,
@@ -61,9 +64,13 @@ impl<'a> ChildBootstrap<'a> {
     }
 
     fn configure(&self) -> io::Result<()> {
-        configure_child(&self.command.limits)?;
+        let rootfs = RootFilesystem::new(&self.command.working_directory);
 
-        std::env::set_current_dir(&self.command.working_directory)?;
+        rootfs.prepare()?;
+        rootfs.bind_system()?;
+        rootfs.enter()?;
+        configure_child(&self.command.limits)?;
+        std::env::set_current_dir("/")?;
 
         Ok(())
     }

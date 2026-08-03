@@ -30,6 +30,12 @@ impl ProcessBackend for ForkBackend {
             }
 
             0 => {
+                unsafe {
+                    if libc::setpgid(0, 0) != 0 {
+                        return Err(io::Error::last_os_error().into());
+                    }
+                }
+
                 close(stdin_pipe.write);
                 close(stdout_pipe.read);
                 close(stderr_pipe.read);
@@ -37,17 +43,59 @@ impl ProcessBackend for ForkBackend {
                 NamespaceManager::enter_user_namespace()?;
                 println!("NamespaceManager end");
                 child_coodinator.namespace_created()?;
+                child_coodinator.wait_for_parent()?;
                 MountNamespace::enter()?;
                 MountNamespace::make_private()?;
-                child_coodinator.wait_for_parent()?;
 
-                ChildBootstrap::new(
-                    command,
-                    stdin_pipe.read,
-                    stdout_pipe.write,
-                    stderr_pipe.write,
-                )
-                .run()
+                unsafe {
+                    if libc::unshare(libc::CLONE_NEWPID) != 0 {
+                        return Err(io::Error::last_os_error().into());
+                    }
+                }
+
+                // 2. FORK AGAIN. This grandchild will be placed INTO the new PID namespace.
+                let inner_pid = unsafe { libc::fork() };
+                match inner_pid {
+                    -1 => {
+                        return Err(io::Error::last_os_error().into());
+                    }
+                    0 => {
+                        // We are now PID 1 inside the new PID namespace!
+                        // mount_proc() will now succeed.
+                        unsafe {
+                            // Tell the Linux kernel: "If my parent (the Middle Child) dies, kill me immediately with SIGKILL."
+                            // This ensures no orphaned sandboxes can survive a timeout.
+                            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                        }
+                        ChildBootstrap::new(
+                            command,
+                            stdin_pipe.read,
+                            stdout_pipe.write,
+                            stderr_pipe.write,
+                        )
+                        .run()
+                    }
+                    pid => {
+                        close(stdin_pipe.read);
+                        close(stdout_pipe.write);
+                        close(stderr_pipe.write);
+                        // The middle process waits for the actual payload to finish executing
+                        let mut status = 0;
+                        unsafe { libc::waitpid(pid, &mut status, 0) };
+
+                        let exit_code = if libc::WIFEXITED(status) {
+                            libc::WEXITSTATUS(status)
+                        } else if libc::WIFSIGNALED(status) {
+                            // Standard Linux convention: 128 + signal number
+                            128 + libc::WTERMSIG(status)
+                        } else {
+                            println!("killed wiith status: {status}");
+                            1 // fallback error
+                        };
+
+                        unsafe { libc::_exit(exit_code) };
+                    }
+                }
             }
 
             pid => {
