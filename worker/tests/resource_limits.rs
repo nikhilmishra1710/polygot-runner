@@ -1,5 +1,5 @@
 mod common;
-use runtime_worker::model::{ExecutionStatus};
+use runtime_worker::model::ExecutionStatus;
 
 use common::{cpu_limit, execute_python, file_size_limit, open_file_limit};
 
@@ -31,6 +31,20 @@ fn cpu_limit_exceeded() {
     let source = r#"
 while True:
     pass
+"#;
+
+    let result = execute_python(source, cpu_limit(5));
+
+    assert_eq!(result.status, ExecutionStatus::RuntimeError,);
+}
+
+#[test]
+fn memory_limit_exceeded() {
+    let source = r#"
+a = []
+
+while True:
+    a.append(bytearray(1024 * 1024))
 "#;
 
     let result = execute_python(source, cpu_limit(5));

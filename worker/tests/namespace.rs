@@ -4,7 +4,7 @@ use runtime_worker::model::ExecutionStatus;
 use crate::common::{execute_python, open_file_limit};
 
 #[test]
-fn open_file_limit_exceeded() {
+fn namespace_test() {
     let source = r#"
 import os
 

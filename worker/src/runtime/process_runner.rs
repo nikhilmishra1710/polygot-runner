@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    cgroup::ExecutionCgroup,
     error::WorkerError,
     model::{ExecutionResult, ExecutionStatus},
     runtime::{

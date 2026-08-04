@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const SYSTEM_MOUNTS: &[&str] = &["/bin", "/usr", "/lib", "/lib64", "/etc"];
+const SYSTEM_MOUNTS: &[&str] = &["/bin", "/usr", "/lib", "/lib64"];
 
 pub struct RootFilesystem {
     root: PathBuf,

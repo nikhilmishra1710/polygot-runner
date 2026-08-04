@@ -1,4 +1,5 @@
 use crate::{
+    cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{
         ChildBootstrap, ChildCoordinator, ParentCoordinator, RunningProcess, RuntimeCommand,
@@ -22,14 +23,21 @@ impl ProcessBackend for ForkBackend {
         let child_pipe = pipe()?;
         let parent_coordinator = ParentCoordinator::new(parent_pipe.read, child_pipe.write)?;
         let child_coodinator = ChildCoordinator::new(child_pipe.read, parent_pipe.write)?;
+        let cgroup = ExecutionCgroup::create()?;
+        cgroup.set_memory_limit(command.limits.memory_bytes)?;
+        cgroup.set_pid_limit(command.limits.pids_max)?;
         let pid = unsafe { libc::fork() };
-
         match pid {
             -1 => {
                 return Err(io::Error::last_os_error().into());
             }
 
             0 => {
+                if let Err(e) = cgroup.attach(0) {
+                    eprintln!("Fatal: Child failed to attach to cgroup: {}", e);
+                    std::process::exit(1);
+                }
+
                 unsafe {
                     if libc::setpgid(0, 0) != 0 {
                         return Err(io::Error::last_os_error().into());
