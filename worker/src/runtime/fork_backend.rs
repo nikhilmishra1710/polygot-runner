@@ -2,7 +2,8 @@ use crate::{
     cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{
-        ChildBootstrap, ChildCoordinator, ParentCoordinator, RunningProcess, RuntimeCommand,
+        ChildBootstrap, ChildCoordinator, InitProcess, ParentCoordinator, RunningProcess,
+        RuntimeCommand,
         backend::ProcessBackend,
         unix::{close, pipe},
     },
@@ -13,7 +14,11 @@ use std::io;
 pub struct ForkBackend;
 
 impl ProcessBackend for ForkBackend {
-    fn launch(&self, command: &RuntimeCommand) -> Result<RunningProcess, WorkerError> {
+    fn launch(
+        &self,
+        command: &RuntimeCommand,
+        cgroup: &ExecutionCgroup,
+    ) -> Result<RunningProcess, WorkerError> {
         // fork() returns a rustix::io::Result<Option<Pid>>
         // Note: The `?` operator requires WorkerError to implement From<rustix::io::Errno>
         let stdin_pipe = pipe()?;
@@ -23,9 +28,7 @@ impl ProcessBackend for ForkBackend {
         let child_pipe = pipe()?;
         let parent_coordinator = ParentCoordinator::new(parent_pipe.read, child_pipe.write)?;
         let child_coodinator = ChildCoordinator::new(child_pipe.read, parent_pipe.write)?;
-        let cgroup = ExecutionCgroup::create()?;
-        cgroup.set_memory_limit(command.limits.memory_bytes)?;
-        cgroup.set_pid_limit(command.limits.pids_max)?;
+
         let pid = unsafe { libc::fork() };
         match pid {
             -1 => {
@@ -75,13 +78,12 @@ impl ProcessBackend for ForkBackend {
                             // This ensures no orphaned sandboxes can survive a timeout.
                             libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
                         }
-                        ChildBootstrap::new(
+                        InitProcess::run(
                             command,
                             stdin_pipe.read,
                             stdout_pipe.write,
                             stderr_pipe.write,
                         )
-                        .run()
                     }
                     pid => {
                         close(stdin_pipe.read);

@@ -1,4 +1,5 @@
 use crate::{
+    cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{RunningProcess, backend::ProcessBackend},
 };
@@ -14,7 +15,11 @@ impl<B: ProcessBackend> ProcessLauncher<B> {
         Self { backend }
     }
 
-    pub fn launch(&self, command: &RuntimeCommand) -> Result<RunningProcess, WorkerError> {
-        self.backend.launch(command)
+    pub fn launch(
+        &self,
+        command: &RuntimeCommand,
+        cgroup: &ExecutionCgroup,
+    ) -> Result<RunningProcess, WorkerError> {
+        self.backend.launch(command, cgroup)
     }
 }

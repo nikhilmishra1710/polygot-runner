@@ -1,3 +1,3 @@
 import os
-print(os.getuid())
-print(os.getgid())
+
+print(os.getupid(), os.getppid())

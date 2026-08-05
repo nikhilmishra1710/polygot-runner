@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{RunningProcess, backend::ProcessBackend, unix::configure_child},
 };
@@ -13,7 +14,11 @@ use super::RuntimeCommand;
 pub struct StdProcessBackend;
 
 impl ProcessBackend for StdProcessBackend {
-    fn launch(&self, command: &RuntimeCommand) -> Result<RunningProcess, WorkerError> {
+    fn launch(
+        &self,
+        command: &RuntimeCommand,
+        cgroup: &ExecutionCgroup,
+    ) -> Result<RunningProcess, WorkerError> {
         let mut process = Command::new(&command.executable.path);
 
         process

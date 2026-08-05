@@ -27,7 +27,11 @@ impl NativeProcessRunner {
     pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionResult, WorkerError> {
         let launcher = ProcessLauncher::new(ForkBackend);
 
-        let mut process = launcher.launch(&command)?;
+        let cgroup = ExecutionCgroup::create()?;
+        cgroup.set_memory_limit(command.limits.memory_bytes)?;
+        cgroup.set_pid_limit(command.limits.pids_max)?;
+
+        let mut process = launcher.launch(&command, &cgroup)?;
 
         let stdout = process
             .stdout()
