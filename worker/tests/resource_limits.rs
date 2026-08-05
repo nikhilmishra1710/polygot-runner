@@ -3,6 +3,8 @@ use runtime_worker::model::ExecutionStatus;
 
 use common::{cpu_limit, execute_python, file_size_limit, open_file_limit};
 
+use crate::common::default_limits;
+
 #[test]
 fn open_file_limit_exceeded() {
     let source = r#"
@@ -47,7 +49,7 @@ while True:
     a.append(bytearray(1024 * 1024))
 "#;
 
-    let result = execute_python(source, cpu_limit(5));
+    let result = execute_python(source, default_limits());
 
     assert_eq!(result.status, ExecutionStatus::RuntimeError,);
 }

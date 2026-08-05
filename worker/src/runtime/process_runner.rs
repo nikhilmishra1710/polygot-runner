@@ -92,21 +92,33 @@ impl NativeProcessRunner {
         let status = if exit_status.success() {
             ExecutionStatus::Success
         } else {
-            // Standard non-zero exit code
-            println!(
-                "Process exited with standard non-zero code: {:?} {:?} {:?}",
-                exit_status.code(),
-                stderr,
-                stdout
-            );
-            ExecutionStatus::RuntimeError
+            // Depending on how your ForkBackend constructs the exit status,
+            // a killed process might show up in `.code()` as 128 + signal,
+            // OR in `.signal()` if using Rust's native Unix extensions.
+            use std::os::unix::process::ExitStatusExt;
+
+            let code = exit_status.code();
+            let signal = exit_status.signal();
+
+            if code == Some(128 + libc::SIGSYS) || signal == Some(libc::SIGSYS) {
+                // 159 (128 + 31) -> Bad System Call
+                ExecutionStatus::SeccompViolation
+            } else if code == Some(128 + libc::SIGKILL) || signal == Some(libc::SIGKILL) {
+                // 137 (128 + 9) -> OOM Killer
+                // We know it's OOM and not a Timeout because the Timeout
+                // is caught earlier inside the polling loop!
+                ExecutionStatus::RuntimeError
+            } else {
+                // Any other standard error (e.g., SyntaxError in Python causing exit code 1)
+                ExecutionStatus::RuntimeError
+            }
         };
 
         Ok(ExecutionResult {
-            stdout: stdout,
-            stderr: stderr,
+            stdout, // Note: You can drop the `stdout: stdout` shorthand in Rust
+            stderr,
             exit_code: exit_status.code(),
-            status: status,
+            status,
         })
     }
 }

@@ -6,6 +6,7 @@ pub mod language;
 pub mod model;
 pub mod runtime;
 pub mod sandbox;
+pub mod seccomp;
 pub mod toolchain;
 mod util;
 pub mod workspace;

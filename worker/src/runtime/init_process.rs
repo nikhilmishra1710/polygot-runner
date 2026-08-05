@@ -39,21 +39,21 @@ impl InitProcess {
                 close(stdout_write);
                 close(stderr_write);
 
-                // 3. Install signal handlers to forward to the payload
-                let signals = [
-                    libc::SIGTERM,
-                    libc::SIGINT,
-                    libc::SIGQUIT,
-                    libc::SIGUSR1,
-                    libc::SIGUSR2,
-                    libc::SIGHUP,
-                ];
+                // // 3. Install signal handlers to forward to the payload
+                // let signals = [
+                //     libc::SIGTERM,
+                //     libc::SIGINT,
+                //     libc::SIGQUIT,
+                //     libc::SIGUSR1,
+                //     libc::SIGUSR2,
+                //     libc::SIGHUP,
+                // ];
 
-                for &sig in &signals {
-                    unsafe {
-                        libc::signal(sig, libc::SIG_IGN);
-                    }
-                }
+                // for &sig in &signals {
+                //     unsafe {
+                //         libc::signal(sig, libc::SIG_IGN);
+                //     }
+                // }
 
                 // 4. Zombie Reaping Loop
                 loop {

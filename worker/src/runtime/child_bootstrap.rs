@@ -8,8 +8,7 @@ use std::{
 };
 
 use crate::{
-    runtime::{RuntimeCommand, unix::configure_child},
-    sandbox::RootFilesystem,
+    runtime::{RuntimeCommand, unix::configure_child}, sandbox::RootFilesystem, seccomp::SeccompFilter,
 };
 
 pub struct ChildBootstrap<'a> {
@@ -71,6 +70,21 @@ impl<'a> ChildBootstrap<'a> {
         rootfs.enter()?;
         configure_child(&self.command.limits)?;
         std::env::set_current_dir("/")?;
+
+        unsafe {
+            // This tells the kernel: "This process and its children can NEVER gain new privileges"
+            // (e.g., via setuid binaries). Seccomp requires this.
+            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                eprintln!("Fatal: Failed to set NO_NEW_PRIVS");
+                std::process::exit(1);
+            }
+        }
+
+        // 4. Install Seccomp Filter
+        if let Err(e) = SeccompFilter::install() {
+            eprintln!("Fatal: Failed to install seccomp filter: {}", e);
+            std::process::exit(1);
+        }
 
         Ok(())
     }

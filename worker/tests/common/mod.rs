@@ -29,7 +29,7 @@ pub fn execute(
     engine.execute(&request).unwrap()
 }
 
-fn default_limits() -> ResourceLimits {
+pub fn default_limits() -> ResourceLimits {
     ResourceLimits::default()
 }
 
