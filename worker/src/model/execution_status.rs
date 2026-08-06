@@ -7,7 +7,9 @@ pub enum ExecutionStatus {
     TimeLimitExceeded,
     CompilationError,
     InternalError,
-    SeccompViolation
+    SeccompViolation,
+    MemoryLimitExceeded,
+    CpuLimitExcedded,
 }
 
 impl fmt::Display for ExecutionStatus {
@@ -18,7 +20,9 @@ impl fmt::Display for ExecutionStatus {
             ExecutionStatus::TimeLimitExceeded => write!(f, "Time Limit Exceeded"),
             ExecutionStatus::CompilationError => write!(f, "Compilation Error"),
             ExecutionStatus::InternalError => write!(f, "Internal Error"),
-            ExecutionStatus::SeccompViolation => write!(f, "Seccomp Violation")
+            ExecutionStatus::SeccompViolation => write!(f, "Seccomp Violation"),
+            ExecutionStatus::MemoryLimitExceeded => write!(f, "Memory Limit Violation"),
+            ExecutionStatus::CpuLimitExcedded => write!(f, "CPU Limit error"),
         }
     }
 }

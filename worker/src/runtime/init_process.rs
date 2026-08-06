@@ -1,7 +1,5 @@
-use crate::runtime::{ChildBootstrap, RuntimeCommand, unix::close};
-use std::{
-    os::fd::OwnedFd,
-};
+use crate::runtime::{unix::close, ChildBootstrap, RuntimeCommand};
+use std::os::fd::OwnedFd;
 
 pub struct InitProcess;
 
@@ -31,31 +29,30 @@ impl InitProcess {
             payload_pid => {
                 // We are PID 1 (The Init Process)
 
-                // 1. Close pipes in Init!
-                // Only the payload should hold these open, otherwise the Parent
-                // will never receive an EOF when the payload exits.
-
+                // 1. Close write/read file descriptors in PID 1 so EOF propagates
+                //    to the parent reader when PID 2 closes them.
                 close(stdin_read);
                 close(stdout_write);
                 close(stderr_write);
 
-                // // 3. Install signal handlers to forward to the payload
-                // let signals = [
-                //     libc::SIGTERM,
-                //     libc::SIGINT,
-                //     libc::SIGQUIT,
-                //     libc::SIGUSR1,
-                //     libc::SIGUSR2,
-                //     libc::SIGHUP,
-                // ];
+                // 2. Ignore common termination signals so PID 1 isn't killed 
+                //    before it finishes reaping PID 2.
+                let signals = [
+                    libc::SIGTERM,
+                    libc::SIGINT,
+                    libc::SIGQUIT,
+                    libc::SIGUSR1,
+                    libc::SIGUSR2,
+                    libc::SIGHUP,
+                ];
 
-                // for &sig in &signals {
-                //     unsafe {
-                //         libc::signal(sig, libc::SIG_IGN);
-                //     }
-                // }
+                for &sig in &signals {
+                    unsafe {
+                        libc::signal(sig, libc::SIG_IGN);
+                    }
+                }
 
-                // 4. Zombie Reaping Loop
+                // 3. Zombie Reaping Loop
                 loop {
                     let mut status = 0;
 
@@ -64,36 +61,31 @@ impl InitProcess {
 
                     if reaped_pid < 0 {
                         let err = std::io::Error::last_os_error();
-                        // If waitpid was interrupted by our signal handler, just loop again
                         if err.raw_os_error() == Some(libc::EINTR) {
                             continue;
                         }
-                        // If ECHILD is returned, there are absolutely no children left
                         if err.raw_os_error() == Some(libc::ECHILD) {
+                            // No children left
                             std::process::exit(0);
                         }
                         continue;
                     }
 
-                    // If the process that just died was our main payload...
+                    // If the reaped process was our main payload, exit PID 1 immediately!
                     if reaped_pid == payload_pid {
                         if libc::WIFEXITED(status) {
                             std::process::exit(libc::WEXITSTATUS(status));
                         } else if libc::WIFSIGNALED(status) {
                             let sig = libc::WTERMSIG(status);
-                            unsafe {
-                                // Reset handler and kill self to propagate exact signal
-                                libc::signal(sig, libc::SIG_DFL);
-                                libc::kill(libc::getpid(), sig);
-                            }
+                            // Exit cleanly with standard Unix convention (128 + signal)
                             std::process::exit(128 + sig);
                         } else {
                             std::process::exit(1);
                         }
                     }
 
-                    // If reaped_pid != payload_pid, we just successfully reaped a zombie
-                    // created by the payload! The loop naturally continues.
+                    // If reaped_pid != payload_pid, we reaped a background child process.
+                    // Loop continues.
                 }
             }
         }

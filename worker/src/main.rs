@@ -4,7 +4,8 @@ use runtime_worker::model::{ExecutionRequest, Language, ResourceLimits, SourceFi
 use std::fs::File;
 use std::io::prelude::*;
 use std::process;
-use std::time::Duration;
+use tracing_subscriber::EnvFilter;
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(name = "polyrunner")]
@@ -24,21 +25,29 @@ enum Mode {
 }
 
 fn main() {
+    tracing_subscriber::fmt()
+    .with_env_filter(
+        EnvFilter::try_from_default_env()
+            .or_else(|_| EnvFilter::try_new("runtime_worker=info"))
+            .unwrap(),
+    )
+    .init();
+
     let cli = Cli::parse();
 
     match cli.mode {
         Mode::Execute => {
             // Check if the file is NOT empty (i.e., Some)
             if let Some(file_path) = cli.file_path {
-                println!("Success! Executing file: {}", file_path);
+                info!("Success! Executing file: {}", file_path);
                 let mut file = File::open(&file_path).unwrap();
                 let mut contents = String::new();
                 let _ = file.read_to_string(&mut contents);
                 if contents.len() <= 0 {
-                    eprintln!("Error: The file is empty");
+                    error!("Error: The file is empty");
                     process::exit(0); // Exit with an error code
                 }
-                println!("Content: {}", contents);
+                info!("Content: {}", contents);
                 let temp = SourceFile {
                     path: "main.py".into(),
                     contents: contents.into_bytes().to_vec(),
@@ -53,12 +62,15 @@ fn main() {
                 let engine = ExecutionEngine::new();
 
                 let result = engine.execute(&request).unwrap();
-                println!("Output: {}", String::from_utf8(result.stdout).unwrap());
-                println!("Err: {}", String::from_utf8(result.stderr).unwrap());
-                println!("Status: {}", result.status);
-                process::exit(result.exit_code.unwrap_or(1));
+                info!(
+                    "Output: {}",
+                    String::from_utf8(result.output.stdout).unwrap()
+                );
+                info!("Err: {}", String::from_utf8(result.output.stderr).unwrap());
+                info!("Status: {:?}", result.termination);
+                process::exit(0);
             } else {
-                eprintln!("Error: A file is required when using 'execute' mode.");
+                error!("Error: A file is required when using 'execute' mode.");
                 process::exit(1); // Exit with an error code
             }
         }

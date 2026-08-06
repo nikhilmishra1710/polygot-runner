@@ -21,7 +21,7 @@ fn create_execution_request() {
 #[test]
 fn execution_status_equality() {
     assert_eq!(
-        ExecutionStatus::Success,
-        ExecutionStatus::Success
+        TerminationReason::ExitCode(0),
+        TerminationReason::ExitCode(0)
     );
 }

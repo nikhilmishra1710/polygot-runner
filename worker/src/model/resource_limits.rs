@@ -14,7 +14,7 @@ impl Default for ResourceLimits {
     fn default() -> Self {
         Self {
             wall_time: Duration::from_secs(10),
-            cpu_time: Duration::from_secs(5),
+            cpu_time: Duration::from_secs(10),
             max_open_files: 128,
             max_file_size: 10 * 1024 * 1024,
             memory_bytes: 256 * 1024 * 1024, // 256 MB

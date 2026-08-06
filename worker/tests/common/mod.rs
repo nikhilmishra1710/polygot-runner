@@ -1,10 +1,10 @@
 use runtime_worker::{
     engine::ExecutionEngine,
-    model::{ExecutionRequest, ExecutionResult, Language, ResourceLimits, SourceFile},
+    model::{ExecutionReport, ExecutionRequest, Language, ResourceLimits, SourceFile},
 };
 use std::time::Duration;
 
-pub fn execute_python(source: &str, limits: ResourceLimits) -> ExecutionResult {
+pub fn execute_python(source: &str, limits: ResourceLimits) -> ExecutionReport {
     execute(Language::Python, "main.py", source, limits)
 }
 
@@ -13,7 +13,7 @@ pub fn execute(
     filename: &str,
     source: &str,
     limits: ResourceLimits,
-) -> ExecutionResult {
+) -> ExecutionReport {
     let engine = ExecutionEngine::new();
 
     let request = ExecutionRequest {
@@ -54,5 +54,11 @@ pub fn file_size_limit(bytes: u64) -> ResourceLimits {
 pub fn wall_time_limit(seconds: Duration) -> ResourceLimits {
     let mut limits = default_limits();
     limits.wall_time = seconds;
+    limits
+}
+
+pub fn memory_limit(bytes: u64) -> ResourceLimits {
+    let mut limits = default_limits();
+    limits.memory_bytes = bytes;
     limits
 }

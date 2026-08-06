@@ -1,9 +1,9 @@
 mod common;
-use runtime_worker::model::ExecutionStatus;
 
 use common::{cpu_limit, execute_python, file_size_limit, open_file_limit};
+use runtime_worker::model::TerminationReason;
 
-use crate::common::default_limits;
+use crate::common::{default_limits, memory_limit};
 
 #[test]
 fn open_file_limit_exceeded() {
@@ -21,9 +21,9 @@ while True:
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::RuntimeError);
+    assert_eq!(result.termination, TerminationReason::ExitCode(1));
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = String::from_utf8_lossy(&result.output.stderr);
 
     assert!(stderr.contains("Too many open files") || stderr.contains("EMFILE"));
 }
@@ -37,7 +37,7 @@ while True:
 
     let result = execute_python(source, cpu_limit(5));
 
-    assert_eq!(result.status, ExecutionStatus::RuntimeError,);
+    assert_eq!(result.termination, TerminationReason::CpuLimit,);
 }
 
 #[test]
@@ -46,12 +46,12 @@ fn memory_limit_exceeded() {
 a = []
 
 while True:
-    a.append(bytearray(1024 * 1024))
+    a.append(bytearray(256 * 1024 * 1024))
 "#;
 
-    let result = execute_python(source, default_limits());
+    let result = execute_python(source, memory_limit(2 * 1024 * 1024));
 
-    assert_eq!(result.status, ExecutionStatus::RuntimeError,);
+    assert_eq!(result.termination, TerminationReason::OomKilled);
 }
 
 #[test]
@@ -59,14 +59,14 @@ fn file_size_limit_exceeded() {
     let source = r#"
 with open("large.bin", "wb") as f:
     while True:
-        f.write(b"x" * 4096)
+        f.write(b"x" * 8192)
 "#;
 
     let result = execute_python(source, file_size_limit(8192));
 
-    assert_eq!(result.status, ExecutionStatus::RuntimeError);
+    assert_eq!(result.termination, TerminationReason::ExitCode(1));
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = String::from_utf8_lossy(&result.output.stderr);
 
     assert!(stderr.contains("File too large"));
 }

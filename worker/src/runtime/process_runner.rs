@@ -1,19 +1,43 @@
-use std::{
-    thread,
-    time::{Duration, Instant},
-};
-
 use crate::{
-    cgroup::ExecutionCgroup,
+    cgroup::{ExecutionCgroup, read_cgroup_metrics},
     error::WorkerError,
-    model::{ExecutionResult, ExecutionStatus},
+    model::{
+        ExecutionMetrics, ExecutionReport, ExecutionResult, ExecutionStatus, Output,
+        TerminationReason,
+    },
     runtime::{
         EventPipeline, ForkBackend, ProcessLauncher, Stream, kill_process_group_id,
         reader::spawn_reader, std_backend::StdProcessBackend,
     },
 };
+use std::os::unix::process::ExitStatusExt;
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
+use tracing::{debug, info, trace, warn};
 
 use super::RuntimeCommand;
+
+use std::fs;
+use std::path::Path;
+
+pub fn is_cgroup_oom(cgroup_path: &Path) -> bool {
+    let events_path = cgroup_path.join("memory.events");
+    if let Ok(content) = fs::read_to_string(events_path) {
+        for line in content.lines() {
+            // Line format: "oom_kill 1"
+            if line.starts_with("oom_kill") {
+                if let Some(count_str) = line.split_whitespace().nth(1) {
+                    if let Ok(count) = count_str.parse::<u64>() {
+                        return count > 0;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
 
 pub struct NativeProcessRunner;
 
@@ -24,7 +48,7 @@ impl NativeProcessRunner {
         Self
     }
 
-    pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionResult, WorkerError> {
+    pub fn run(&self, command: RuntimeCommand) -> Result<ExecutionReport, WorkerError> {
         let launcher = ProcessLauncher::new(ForkBackend);
 
         let cgroup = ExecutionCgroup::create()?;
@@ -47,78 +71,76 @@ impl NativeProcessRunner {
 
         let stderr_handle = spawn_reader(stderr, Stream::Stderr, pipeline.sender());
 
-        let start = Instant::now();
+        let start_time = Instant::now();
+        let mut wall_timeout_occurred = false;
 
         let exit_status = loop {
             if let Some(status) = process.try_wait()? {
                 break status;
             }
 
-            if start.elapsed() >= command.limits.wall_time {
-                kill_process_group_id(process.pid() as u32)?;
-                process.wait()?;
-
-                stdout_handle
-                    .join()
-                    .map_err(|_| std::io::Error::other("stdout reader panicked"))??;
-
-                stderr_handle
-                    .join()
-                    .map_err(|_| std::io::Error::other("stderr reader panicked"))??;
-
-                let (stdout, stderr) = pipeline.finish()?.into_output();
-
-                return Ok(ExecutionResult {
-                    stdout: stdout,
-                    stderr: stderr,
-                    exit_code: None,
-                    status: ExecutionStatus::TimeLimitExceeded,
-                });
+            if start_time.elapsed() >= command.limits.wall_time {
+                warn!("Execution wall time limit reached; forcefully killing process group");
+                wall_timeout_occurred = true;
+                let _ = kill_process_group_id(process.pid() as u32);
+                break process.wait()?;
             }
 
             thread::sleep(POLL_INTERVAL);
         };
 
-        stdout_handle
-            .join()
-            .map_err(|_| std::io::Error::other("stdout reader panicked"))??;
+        let total_wall_time = start_time.elapsed();
 
-        stderr_handle
-            .join()
-            .map_err(|_| std::io::Error::other("stderr reader panicked"))??;
+        // Drain standard streams
+        let _ = stdout_handle.join();
+        let _ = stderr_handle.join();
+        let (stdout_data, stderr_data) = pipeline.finish()?.into_output();
 
-        let (stdout, stderr) = pipeline.finish()?.into_output();
+        // Step 3: Collect cgroup metrics before destroying cgroup
+        let (max_rss_bytes, peak_pids, cpu_time) = read_cgroup_metrics(&cgroup.path());
+        let is_oom = is_cgroup_oom(&cgroup.path());
 
-        let status = if exit_status.success() {
-            ExecutionStatus::Success
-        } else {
-            // Depending on how your ForkBackend constructs the exit status,
-            // a killed process might show up in `.code()` as 128 + signal,
-            // OR in `.signal()` if using Rust's native Unix extensions.
-            use std::os::unix::process::ExitStatusExt;
-
-            let code = exit_status.code();
-            let signal = exit_status.signal();
-
-            if code == Some(128 + libc::SIGSYS) || signal == Some(libc::SIGSYS) {
-                // 159 (128 + 31) -> Bad System Call
-                ExecutionStatus::SeccompViolation
-            } else if code == Some(128 + libc::SIGKILL) || signal == Some(libc::SIGKILL) {
-                // 137 (128 + 9) -> OOM Killer
-                // We know it's OOM and not a Timeout because the Timeout
-                // is caught earlier inside the polling loop!
-                ExecutionStatus::RuntimeError
-            } else {
-                // Any other standard error (e.g., SyntaxError in Python causing exit code 1)
-                ExecutionStatus::RuntimeError
+        // Step 1: Classify termination reason
+        let termination = if wall_timeout_occurred {
+            TerminationReason::WallTimeout
+        } else if is_oom {
+            TerminationReason::OomKilled
+        } else if let Some(sig) = exit_status.signal() {
+            match sig {
+                libc::SIGXCPU => TerminationReason::CpuLimit,
+                libc::SIGSYS => TerminationReason::SeccompViolation,
+                libc::SIGKILL if is_oom => TerminationReason::MemoryLimit,
+                _ => TerminationReason::Signal(sig),
             }
+        } else if let Some(code) = exit_status.code() {
+            match code - 128 {
+                libc::SIGXCPU => TerminationReason::CpuLimit,
+                libc::SIGSYS => TerminationReason::SeccompViolation,
+                _ => TerminationReason::ExitCode(code),
+            }
+        } else {
+            TerminationReason::ExitCode(1)
         };
 
-        Ok(ExecutionResult {
-            stdout, // Note: You can drop the `stdout: stdout` shorthand in Rust
-            stderr,
-            exit_code: exit_status.code(),
-            status,
+        info!(
+            reason = ?termination,
+            wall_time_ms = total_wall_time.as_millis(),
+            max_rss_bytes = max_rss_bytes,
+            "Execution finished"
+        );
+
+        Ok(ExecutionReport {
+            output: Output {
+                stdout: stdout_data,
+                stderr: stderr_data,
+            },
+            termination,
+            metrics: ExecutionMetrics {
+                wall_time: total_wall_time,
+                cpu_time,
+                max_rss_bytes,
+                peak_pids,
+            },
         })
     }
 }

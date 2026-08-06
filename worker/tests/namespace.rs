@@ -1,5 +1,5 @@
 mod common;
-use runtime_worker::model::ExecutionStatus;
+use runtime_worker::model::{ExecutionStatus, TerminationReason};
 
 use crate::common::{execute_python, open_file_limit};
 
@@ -13,9 +13,9 @@ print(os.getuid(), os.geteuid())
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
 
     assert_eq!(stdout, "0 0\n");
 }
@@ -30,9 +30,9 @@ print(os.getpid(), os.getppid())
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
 
     assert_eq!(stdout, "2 1\n");
 }
@@ -48,7 +48,7 @@ if os.fork() == 0:
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 }
 
 #[test]
@@ -71,9 +71,9 @@ time.sleep(2)
 "#;
 
     let result = execute_python(source, open_file_limit(8));
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
     assert_eq!(stdout.trim(), "1");
 }
 
@@ -125,9 +125,9 @@ print(zombies)
 "#;
 
     let result = execute_python(source, open_file_limit(8));
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
     assert_eq!(stdout.trim(), "0");
 }
 
@@ -145,9 +145,9 @@ while True:
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::TimeLimitExceeded);
+    assert_eq!(result.termination, TerminationReason::WallTimeout);
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
 
     assert_eq!(stdout, "term\n");
 }

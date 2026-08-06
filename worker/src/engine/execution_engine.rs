@@ -3,7 +3,7 @@ use std::io::Error;
 use crate::{
     error::WorkerError,
     language::RuntimeRegistry,
-    model::{ExecutionRequest, ExecutionResult},
+    model::{ExecutionReport, ExecutionRequest},
     runtime::NativeProcessRunner,
     workspace::WorkspaceManager,
 };
@@ -23,7 +23,7 @@ impl ExecutionEngine {
         }
     }
 
-    pub fn execute(&self, request: &ExecutionRequest) -> Result<ExecutionResult, WorkerError> {
+    pub fn execute(&self, request: &ExecutionRequest) -> Result<ExecutionReport, WorkerError> {
         let workspace = self.workspace_manager.create(request)?;
 
         let runtime = self.runtime_registry.get(request.language);

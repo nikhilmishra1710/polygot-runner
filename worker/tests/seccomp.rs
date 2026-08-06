@@ -1,7 +1,7 @@
 mod common;
 
 use crate::common::{default_limits, execute_python};
-use runtime_worker::model::ExecutionStatus;
+use runtime_worker::model::TerminationReason;
 
 #[test]
 fn test_seccomp_is_active() {
@@ -14,9 +14,9 @@ with open("/proc/self/status") as f:
 "#;
 
     let result = execute_python(source, default_limits());
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
     assert_eq!(stdout.trim(), "Seccomp:\t2");
 }
 
@@ -29,9 +29,9 @@ print("success")
 "#;
 
     let result = execute_python(source, default_limits());
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
     assert_eq!(stdout.trim(), "success");
 }
 
@@ -52,5 +52,5 @@ libc.reboot(0x01234567)
     let result = execute_python(source, default_limits());
 
     // The kernel should catch reboot(2) and instantly SIGSYS the process
-    assert_eq!(result.status, ExecutionStatus::SeccompViolation);
+    assert_eq!(result.termination, TerminationReason::SeccompViolation);
 }

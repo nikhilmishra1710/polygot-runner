@@ -94,9 +94,11 @@ impl ProcessBackend for ForkBackend {
                         unsafe { libc::waitpid(pid, &mut status, 0) };
 
                         let exit_code = if libc::WIFEXITED(status) {
+                            println!("killed wiith status: {status}");
                             libc::WEXITSTATUS(status)
                         } else if libc::WIFSIGNALED(status) {
                             // Standard Linux convention: 128 + signal number
+                            println!("killed wiith status: 128 + {status}");
                             128 + libc::WTERMSIG(status)
                         } else {
                             println!("killed wiith status: {status}");

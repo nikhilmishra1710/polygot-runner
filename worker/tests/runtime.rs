@@ -29,5 +29,8 @@ fn runs_python_program() {
         })
         .unwrap();
 
-    assert_eq!(String::from_utf8(result.stdout).unwrap(), "Hello World\n");
+    assert_eq!(
+        String::from_utf8(result.output.stdout).unwrap(),
+        "Hello World\n"
+    );
 }

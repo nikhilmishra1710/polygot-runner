@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use runtime_worker::{
     engine::ExecutionEngine,
-    model::{ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile},
+    model::{
+        ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile, TerminationReason,
+    },
 };
 
 use crate::common::wall_time_limit;
@@ -24,12 +26,12 @@ fn executes_python_program() {
 
     let result = engine.execute(&request).unwrap();
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
     assert_eq!(
-        String::from_utf8(result.stdout).unwrap(),
+        String::from_utf8(result.output.stdout).unwrap(),
         "Hello from engine\n"
     );
-    assert!(result.stderr.is_empty());
+    assert!(result.output.stderr.is_empty());
 }
 
 #[test]
@@ -50,5 +52,5 @@ fn executes_python_program_infinite_loop() {
 
     let result = engine.execute(&request).unwrap();
 
-    assert_eq!(result.status, ExecutionStatus::TimeLimitExceeded);
+    assert_eq!(result.termination, TerminationReason::WallTimeout);
 }

@@ -8,7 +8,9 @@ use std::{
 };
 
 use crate::{
-    runtime::{RuntimeCommand, unix::configure_child}, sandbox::RootFilesystem, seccomp::SeccompFilter,
+    runtime::{RuntimeCommand, unix::configure_child},
+    sandbox::RootFilesystem,
+    seccomp::SeccompFilter,
 };
 
 pub struct ChildBootstrap<'a> {
@@ -65,8 +67,7 @@ impl<'a> ChildBootstrap<'a> {
     fn configure(&self) -> io::Result<()> {
         let rootfs = RootFilesystem::new(&self.command.working_directory);
 
-        rootfs.prepare()?;
-        rootfs.bind_system()?;
+        rootfs.setup(&self.command.working_directory, 64 * 1024 * 1024)?;
         rootfs.enter()?;
         configure_child(&self.command.limits)?;
         std::env::set_current_dir("/")?;

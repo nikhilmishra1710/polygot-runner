@@ -12,3 +12,5 @@ tempfile = "3.27.0"
 thiserror = "2.0.18"
 uuid = { version = "1.8", features = ["v4", "fast-rng"] }
 which = "8.0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

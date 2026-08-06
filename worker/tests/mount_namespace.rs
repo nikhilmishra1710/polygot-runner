@@ -1,5 +1,5 @@
 mod common;
-use runtime_worker::model::ExecutionStatus;
+use runtime_worker::model::{ExecutionStatus, TerminationReason};
 
 use crate::common::{execute_python, open_file_limit};
 
@@ -13,9 +13,9 @@ print(os.readlink("/proc/self/ns/mnt"))
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
     let host_ns = std::fs::read_link("/proc/self/ns/mnt").unwrap();
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
 
     assert_ne!(stdout.trim(), host_ns.to_string_lossy().trim());
 }
@@ -35,9 +35,12 @@ print("mounted")
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    assert_eq!(String::from_utf8(result.stdout).unwrap(), "mounted\n");
+    assert_eq!(
+        String::from_utf8(result.output.stdout).unwrap(),
+        "mounted\n"
+    );
 }
 
 #[test]
@@ -55,7 +58,7 @@ print("done")
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
     let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap();
 
@@ -71,9 +74,9 @@ with open("/proc/self/mounts") as f:
 
     let result = execute_python(source, open_file_limit(8));
 
-    assert_eq!(result.status, ExecutionStatus::Success);
+    assert_eq!(result.termination, TerminationReason::ExitCode(0));
 
-    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stdout = String::from_utf8_lossy(&result.output.stdout);
     let count: usize = stdout.trim().parse().unwrap();
 
     assert!(count > 0);
