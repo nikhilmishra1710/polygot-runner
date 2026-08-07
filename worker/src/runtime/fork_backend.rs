@@ -2,7 +2,7 @@ use crate::{
     cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{
-        ChildBootstrap, ChildCoordinator, InitProcess, ParentCoordinator, RunningProcess,
+        ChildCoordinator, InitProcess, ParentCoordinator, RunningProcess,
         RuntimeCommand,
         backend::ProcessBackend,
         unix::{close, pipe},

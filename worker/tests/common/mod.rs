@@ -8,6 +8,10 @@ pub fn execute_python(source: &str, limits: ResourceLimits) -> ExecutionReport {
     execute(Language::Python, "main.py", source, limits)
 }
 
+pub fn execute_cpp(source: &str, limits: ResourceLimits) -> ExecutionReport {
+    execute(Language::Cpp, "main.cpp", source, limits)
+}
+
 pub fn execute(
     language: Language,
     filename: &str,

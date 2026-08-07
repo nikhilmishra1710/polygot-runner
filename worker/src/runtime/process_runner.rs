@@ -1,10 +1,7 @@
 use crate::{
     cgroup::{ExecutionCgroup, read_cgroup_metrics},
     error::WorkerError,
-    model::{
-        ExecutionMetrics, ExecutionReport, ExecutionResult, ExecutionStatus, Output,
-        TerminationReason,
-    },
+    model::{ExecutionMetrics, ExecutionReport, Output, TerminationReason},
     runtime::{
         EventPipeline, ForkBackend, ProcessLauncher, Stream, kill_process_group_id,
         reader::spawn_reader, std_backend::StdProcessBackend,

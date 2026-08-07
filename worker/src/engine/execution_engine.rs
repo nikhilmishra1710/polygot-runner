@@ -1,9 +1,10 @@
 use std::io::Error;
+use tracing::{error, info, warn};
 
 use crate::{
     error::WorkerError,
     language::RuntimeRegistry,
-    model::{ExecutionReport, ExecutionRequest},
+    model::{ExecutionMetrics, ExecutionReport, ExecutionRequest, Output, TerminationReason},
     runtime::NativeProcessRunner,
     workspace::WorkspaceManager,
 };
@@ -31,15 +32,12 @@ impl ExecutionEngine {
         let plan = runtime.prepare(request, &workspace).unwrap();
 
         if let Some(complie) = plan.compile {
-            let result = self.process_runner.run(complie);
-            let Ok(_) = result else {
-                eprintln!("Some error occured");
-                return Err(WorkerError::Io(Error::new(
-                    std::io::ErrorKind::Other,
-                    "Some error occured in compilation",
-                )));
-            };
-            println!("compilation completed!!");
+            let result = self.process_runner.run(complie)?;
+            if !result.termination.is_success() {
+                error!("Some error occured");
+                return Ok(result);
+            }
+            info!("compilation completed!!");
         }
         let result = self.process_runner.run(plan.execute)?;
 

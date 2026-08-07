@@ -49,12 +49,12 @@ fn main() {
                 }
                 info!("Content: {}", contents);
                 let temp = SourceFile {
-                    path: "main.py".into(),
+                    path: "main.cpp".into(),
                     contents: contents.into_bytes().to_vec(),
                 };
                 let file_vector = vec![temp];
                 let request = ExecutionRequest {
-                    language: Language::Python,
+                    language: Language::Cpp,
                     files: file_vector,
                     stdin: Vec::new(),
                     limits: ResourceLimits::default(),
