@@ -1,7 +1,7 @@
 use crate::{
     error::WorkerError,
     model::{ExecutionPlan, ExecutionRequest},
-    toolchain::{Executable},
+    toolchain::Executable,
     workspace::Workspace,
 };
 

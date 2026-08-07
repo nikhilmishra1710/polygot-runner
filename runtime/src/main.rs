@@ -4,8 +4,8 @@ use runtime_worker::model::{ExecutionRequest, Language, ResourceLimits, SourceFi
 use std::fs::File;
 use std::io::prelude::*;
 use std::process;
-use tracing_subscriber::EnvFilter;
 use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "polyrunner")]
@@ -26,12 +26,12 @@ enum Mode {
 
 fn main() {
     tracing_subscriber::fmt()
-    .with_env_filter(
-        EnvFilter::try_from_default_env()
-            .or_else(|_| EnvFilter::try_new("runtime_worker=info"))
-            .unwrap(),
-    )
-    .init();
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new("runtime_worker=info"))
+                .unwrap(),
+        )
+        .init();
 
     let cli = Cli::parse();
 

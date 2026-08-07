@@ -32,7 +32,7 @@ impl LanguageRuntime for CppRuntime {
                 args: vec!["main.cpp".to_string()],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: Vec::new(),
-                limits: request.limits.clone()
+                limits: request.limits.clone(),
             }),
             execute: RuntimeCommand {
                 executable: Executable {
@@ -41,7 +41,7 @@ impl LanguageRuntime for CppRuntime {
                 args: vec![],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: request.stdin.clone(),
-                limits: request.limits.clone()
+                limits: request.limits.clone(),
             },
         })
     }

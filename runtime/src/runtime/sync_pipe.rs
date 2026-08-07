@@ -31,7 +31,7 @@ impl ChildCoordinator {
 
         Ok(())
     }
-    
+
     pub fn wait_for_parent(&self) -> io::Result<()> {
         let mut byte = [0u8; 1];
 
@@ -75,7 +75,7 @@ impl ParentCoordinator {
 
         Ok(())
     }
-    
+
     pub fn continue_child(&self) -> io::Result<()> {
         let byte = [1u8];
 

@@ -1,4 +1,4 @@
-use crate::runtime::{unix::close, ChildBootstrap, RuntimeCommand};
+use crate::runtime::{ChildBootstrap, RuntimeCommand, unix::close};
 use std::os::fd::OwnedFd;
 
 pub struct InitProcess;
@@ -35,7 +35,7 @@ impl InitProcess {
                 close(stdout_write);
                 close(stderr_write);
 
-                // 2. Ignore common termination signals so PID 1 isn't killed 
+                // 2. Ignore common termination signals so PID 1 isn't killed
                 //    before it finishes reaping PID 2.
                 let signals = [
                     libc::SIGTERM,

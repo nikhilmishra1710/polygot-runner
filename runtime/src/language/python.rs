@@ -31,7 +31,7 @@ impl LanguageRuntime for PythonRuntime {
                 args: vec!["main.py".to_string()],
                 working_directory: workspace.path().to_path_buf(),
                 stdin: request.stdin.clone(),
-                limits: request.limits.clone()
+                limits: request.limits.clone(),
             },
         })
     }

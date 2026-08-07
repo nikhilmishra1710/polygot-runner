@@ -2,8 +2,7 @@ use crate::{
     cgroup::ExecutionCgroup,
     error::WorkerError,
     runtime::{
-        ChildCoordinator, InitProcess, ParentCoordinator, RunningProcess,
-        RuntimeCommand,
+        ChildCoordinator, InitProcess, ParentCoordinator, RunningProcess, RuntimeCommand,
         backend::ProcessBackend,
         unix::{close, pipe},
     },

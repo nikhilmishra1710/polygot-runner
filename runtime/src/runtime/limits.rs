@@ -18,7 +18,7 @@ fn apply_limit(resource: Resource, soft: u64, hard: u64) -> Result<(), Errno> {
 
 fn apply_cpu_limit(limits: &ResourceLimits) -> Result<(), Errno> {
     let seconds = limits.cpu_time.as_secs();
-    apply_limit(Resource::Cpu, seconds, seconds+1)
+    apply_limit(Resource::Cpu, seconds, seconds + 1)
 }
 
 fn apply_file_size_limit(limits: &ResourceLimits) -> Result<(), Errno> {
