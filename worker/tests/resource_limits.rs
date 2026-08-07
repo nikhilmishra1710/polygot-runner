@@ -1,9 +1,7 @@
 mod common;
 
-use common::{cpu_limit, execute_python, file_size_limit, open_file_limit};
+use crate::common::{cpu_limit, execute_python, file_size_limit, memory_limit, open_file_limit};
 use runtime_worker::model::TerminationReason;
-
-use crate::common::{default_limits, memory_limit};
 
 #[test]
 fn open_file_limit_exceeded() {

@@ -1,10 +1,9 @@
-use std::io::Error;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     error::WorkerError,
     language::RuntimeRegistry,
-    model::{ExecutionMetrics, ExecutionReport, ExecutionRequest, Output, TerminationReason},
+    model::{ExecutionReport, ExecutionRequest},
     runtime::NativeProcessRunner,
     workspace::WorkspaceManager,
 };

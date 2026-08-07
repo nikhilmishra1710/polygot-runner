@@ -82,7 +82,7 @@ impl Drop for ExecutionCgroup {
                     std::thread::sleep(std::time::Duration::from_millis(20));
                     retries -= 1;
                 }
-                Err(e) => return,
+                Err(_) => return,
             }
         }
     }

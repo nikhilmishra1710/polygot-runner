@@ -1,5 +1,5 @@
 mod common;
-use runtime_worker::model::{ExecutionStatus, TerminationReason};
+use runtime_worker::model::TerminationReason;
 
 use crate::common::{default_limits, execute_python, open_file_limit};
 

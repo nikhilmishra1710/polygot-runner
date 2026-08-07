@@ -1,6 +1,4 @@
-use crate::{
-    cgroup::ExecutionCgroup, error::WorkerError, model::ExecutionPlan, runtime::RuntimeCommand,
-};
+use crate::{cgroup::ExecutionCgroup, error::WorkerError, runtime::RuntimeCommand};
 
 use super::process::RunningProcess;
 

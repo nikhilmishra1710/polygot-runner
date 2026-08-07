@@ -2,7 +2,7 @@ use std::time::Duration;
 mod common;
 use runtime_worker::{
     engine::ExecutionEngine,
-    model::{ExecutionRequest, ExecutionStatus, Language, SourceFile, TerminationReason},
+    model::{ExecutionRequest, Language, SourceFile, TerminationReason},
 };
 
 use crate::common::wall_time_limit;

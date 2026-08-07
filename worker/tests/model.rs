@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use runtime_worker::model::*;
 
 #[test]

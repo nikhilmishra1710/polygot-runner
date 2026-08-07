@@ -1,6 +1,4 @@
-mod controller;
 mod manager;
-mod path;
 mod metrics;
 
 pub use manager::ExecutionCgroup;

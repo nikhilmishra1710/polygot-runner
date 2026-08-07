@@ -3,9 +3,7 @@ use std::time::Duration;
 
 use runtime_worker::{
     engine::ExecutionEngine,
-    model::{
-        ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile, TerminationReason,
-    },
+    model::{ExecutionRequest, Language, ResourceLimits, SourceFile, TerminationReason},
 };
 
 use crate::common::wall_time_limit;
