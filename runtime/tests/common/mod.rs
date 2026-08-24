@@ -1,8 +1,9 @@
 use runtime_worker::{
     engine::ExecutionEngine,
+    job::{ExecutionJob, JobId},
     model::{ExecutionReport, ExecutionRequest, Language, ResourceLimits, SourceFile},
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 pub fn execute_python(source: &str, limits: ResourceLimits) -> ExecutionReport {
     execute(Language::Python, "main.py", source, limits)
@@ -31,6 +32,21 @@ pub fn execute(
     };
 
     engine.execute(&request).unwrap()
+}
+
+pub fn python_job(id: &str, source: &str) -> ExecutionJob {
+    ExecutionJob {
+        id: JobId(id.to_string()),
+        request: ExecutionRequest {
+            language: Language::Python,
+            files: vec![SourceFile {
+                path: "main.py".into(),
+                contents: source.as_bytes().to_vec(),
+            }],
+            stdin: Vec::new(),
+            limits: default_limits(),
+        },
+    }
 }
 
 pub fn default_limits() -> ResourceLimits {
