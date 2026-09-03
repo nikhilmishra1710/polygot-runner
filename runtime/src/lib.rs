@@ -10,6 +10,7 @@ pub mod seccomp;
 pub mod toolchain;
 pub mod worker;
 pub mod workspace;
+pub mod protocol;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

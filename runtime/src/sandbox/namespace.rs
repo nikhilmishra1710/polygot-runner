@@ -40,13 +40,8 @@ impl NamespaceManager {
     }
 
     pub fn finish_user_namespace(pid: libc::pid_t) -> io::Result<()> {
-        println!("setgroups");
         write_setgroups(pid)?;
-
-        println!("uidmap");
         write_uid_map(pid)?;
-
-        println!("gidmap");
         write_gid_map(pid)?;
 
         Ok(())

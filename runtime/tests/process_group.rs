@@ -35,15 +35,5 @@ while True:
     };
 
     let result = engine.execute(&request).unwrap();
-    println!("status: {:?}", result.termination);
-    println!(
-        "stdout:\n{}",
-        String::from_utf8_lossy(&result.output.stdout)
-    );
-    println!(
-        "stderr:\n{}",
-        String::from_utf8_lossy(&result.output.stderr)
-    );
-    println!("exit_code: {:?}", result.termination);
     assert_eq!(result.termination, TerminationReason::WallTimeout);
 }

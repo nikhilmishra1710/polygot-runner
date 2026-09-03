@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::model::ResourceLimits;
 
 use super::{Language, SourceFile};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionRequest {
     pub language: Language,
     pub files: Vec<SourceFile>,

@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceFile {
     // Relative path inside the workspace
     pub path: PathBuf,

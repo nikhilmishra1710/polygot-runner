@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceLimits {
     pub wall_time: Duration,
     pub cpu_time: Duration,

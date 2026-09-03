@@ -84,21 +84,8 @@ impl RootFilesystem {
     pub fn enter(&self) -> io::Result<()> {
         // Required before pivot_root()
         self.make_mountpoint()?;
-
-        println!("uid={}", unsafe { libc::geteuid() });
-        println!("gid={}", unsafe { libc::getegid() });
-        println!(
-            "{}",
-            std::fs::read_to_string("/proc/self/uid_map").unwrap_or_default()
-        );
-        println!(
-            "{}",
-            std::fs::read_to_string("/proc/self/gid_map").unwrap_or_default()
-        );
-        println!("pivot");
         self.pivot_root()?;
 
-        println!("before proc");
         match self.mount_proc() {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
@@ -109,16 +96,9 @@ impl RootFilesystem {
             }
             Err(e) => return Err(e),
         }
-        println!("after proc");
-
-        println!("dev");
         self.mount_dev()?;
 
-        println!("detach");
         self.detach_old_root()?;
-
-        println!("done");
-
         Ok(())
     }
 
@@ -146,7 +126,6 @@ impl RootFilesystem {
         if rc == -1 {
             return Err(io::Error::last_os_error());
         }
-        println!("{}", std::fs::read_to_string("/proc/self/status")?);
         Ok(())
     }
 
@@ -180,17 +159,12 @@ impl RootFilesystem {
         let new_root = CString::new(self.root.as_os_str().as_bytes())?;
         let put_old = CString::new(self.root.join(".old_root").as_os_str().as_bytes())?;
 
-        println!("root = {:?}", self.root);
-        println!("old = {:?}", self.root.join(".old_root"));
-
         let rc =
             unsafe { libc::syscall(libc::SYS_pivot_root, new_root.as_ptr(), put_old.as_ptr()) };
 
         if rc == -1 {
             return Err(io::Error::last_os_error());
         }
-        println!("pivot rc = {}", rc);
-        println!("errno = {:?}", io::Error::last_os_error());
 
         Ok(())
     }

@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::model::ExecutionReport;
 
 use super::JobId;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct JobResult {
     pub id: JobId,
     pub report: ExecutionReport,

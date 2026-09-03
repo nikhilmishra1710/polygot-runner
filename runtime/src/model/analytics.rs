@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TerminationReason {
     /// Normal process exit with a return code (0 for success, non-zero for failure).
     ExitCode(i32),
@@ -24,13 +26,13 @@ impl TerminationReason {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Output {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
     /// Total real-world elapsed time.
     pub wall_time: Duration,
@@ -42,7 +44,7 @@ pub struct ExecutionMetrics {
     pub peak_pids: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReport {
     pub output: Output,
     pub termination: TerminationReason,
