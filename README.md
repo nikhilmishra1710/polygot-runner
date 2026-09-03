@@ -64,11 +64,11 @@ The API layer never directly executes user code.
 ## Repository Structure
 
 ```
-api/            Go API server
-worker/         Rust execution engine
+api/            Go API server (planned)
+runtime/        Rust execution engine
 sdk/            Client SDKs
-web/            Web IDE
-deployment/     Docker & Kubernetes manifests
+web/            Web IDE (planned)
+deployment/     Docker & Kubernetes manifests (planned)
 docs/           Design documents
 proto/          Shared contracts
 scripts/        Development scripts
