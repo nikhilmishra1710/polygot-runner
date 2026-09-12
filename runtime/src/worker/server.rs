@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use tracing::debug;
+use tracing::{debug, error, info};
 
 use crate::{
     protocol::{self, WorkerRequest, WorkerResponse},
@@ -17,73 +17,103 @@ pub struct WorkerServer {
 
 impl WorkerServer {
     pub fn new(worker: Worker) -> Self {
+        debug!("Creating new worker server");
         Self { worker }
     }
 
     pub fn bind(&self, path: &Path) -> io::Result<()> {
+        info!("Binding worker socket to {}", path.display());
         if path.exists() {
+            debug!("Removing existing socket file");
             std::fs::remove_file(path)?;
         }
 
         let listener = UnixListener::bind(path)?;
+        info!("Worker socket bound to {}", path.display());
 
         for stream in listener.incoming() {
-            debug!("handle_connection started");
-            let stream = stream?;
+            match stream {
+                Ok(stream) => {
+                    info!("Accepted new connection");
+                    debug!("handle_connection started");
+                    let should_shutdown = self.handle_connection(stream)?;
+                    debug!("handle_connection returned");
 
-            let should_shutdown = self.handle_connection(stream)?;
-            debug!("handle_connection returned");
-
-            if should_shutdown {
-                debug!("Shutting down server loop");
-                break;
+                    if should_shutdown {
+                        info!("Shutdown requested, breaking server loop");
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to accept connection: {}", e);
+                    // Continue to next connection
+                }
             }
         }
 
         if path.exists() {
+            debug!("Cleaning up socket file");
             let _ = std::fs::remove_file(path);
             debug!("Cleaned up socket file");
         }
 
+        info!("Worker server stopped");
         Ok(())
     }
 
     fn handle_connection(&self, mut stream: UnixStream) -> io::Result<bool> {
+        debug!("Handling new connection");
         loop {
             let request: WorkerRequest = match protocol::receive(&mut stream) {
-                Ok(request) => request,
+                Ok(request) => {
+                    debug!("Received request: {:?}", request);
+                    request
+                }
 
                 Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                    debug!("Client disconnected unexpectedly (EOF)");
                     break;
                 }
 
                 Err(error) => {
+                    error!("Failed to receive request: {}", error);
                     let response = WorkerResponse::Error(error.to_string());
-
-                    protocol::send(&mut stream, &response)?;
-
+                    if let Err(e) = protocol::send(&mut stream, &response) {
+                        error!("Failed to send error response: {}", e);
+                    }
                     break;
                 }
             };
 
             match request {
                 WorkerRequest::Execute(job) => {
+                    info!("Executing job with id: {:?}", job.id);
                     let response = match self.worker.execute(job) {
-                        Ok(result) => WorkerResponse::Result(result),
-
-                        Err(error) => WorkerResponse::Error(error.to_string()),
+                        Ok(result) => {
+                            debug!("Job executed successfully");
+                            WorkerResponse::Result(result)
+                        }
+                        Err(error) => {
+                            error!("Job execution failed: {}", error);
+                            WorkerResponse::Error(error.to_string())
+                        }
                     };
 
-                    protocol::send(&mut stream, &response)?;
+                    if let Err(e) = protocol::send(&mut stream, &response) {
+                        error!("Failed to send response: {}", e);
+                        break;
+                    }
+                    debug!("Response sent successfully");
                 }
 
                 WorkerRequest::Shutdown => {
+                    info!("Shutdown command received");
                     debug!("Worker receive shutdown");
                     break;
                 }
             }
         }
-
+        debug!("Connection handling finished");
         Ok(true)
     }
 }

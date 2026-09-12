@@ -1,0 +1,47 @@
+# 1. Use the slim variant (Saves ~600MB)
+FROM rust:1-slim-bookworm
+
+ARG GO_VERSION=1.25.0
+
+# 2. Install dependencies (Clean lists automatically done by your script, which is good)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3 \
+        g++ \
+        libseccomp-dev \
+        sudo \
+        wget \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tgz \
+    && tar -C /usr/local -xzf /tmp/go.tgz \
+    && rm /tmp/go.tgz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+WORKDIR /src
+
+COPY runtime/Cargo.toml runtime/Cargo.lock runtime/
+COPY api/go.mod api/go.sum api/
+RUN cd api && (go mod download || true)
+
+COPY runtime/ runtime/
+COPY api/ api/
+COPY proto/ proto/
+
+# 3. Pre-compile tests during the build step, then wipe the package caches
+# --no-run compiles the test binaries without executing them.
+RUN cargo build --manifest-path runtime/Cargo.toml --bins \
+    && cargo test --manifest-path runtime/Cargo.toml --no-run \
+    && rm -rf /usr/local/cargo/registry \
+    && rm -rf /usr/local/cargo/git
+
+RUN cd api \
+    && go build ./... \
+    && go test -c ./... \
+    && go clean -cache -modcache
+
+ENV WORKERD_BIN=/src/runtime/target/debug/workerd
+
+CMD ["bash", "-c", "\
+  cd /src/api && go test ./... -count=1 -v; \
+  cd /src/runtime && cargo test 2>&1 | tail -40"]

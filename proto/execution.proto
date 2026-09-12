@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package execution.v1;
+
+option go_package = "runtime-platform/api/gen/execution/v1";
+
+service ExecutionService {
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+}
+
+message ExecuteRequest {
+  string language = 1;
+  repeated SourceFile files = 2;
+  bytes stdin = 3;
+}
+
+message SourceFile {
+  string path = 1;
+  bytes contents = 2;
+}
+
+message ExecuteResponse {
+  string id = 1;
+  ExecutionStatus status = 2;
+  bytes stdout = 3;
+  bytes stderr = 4;
+  optional int32 exit_code = 5;
+}
+
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  SUCCESS = 1;
+  RUNTIME_ERROR = 2;
+  TIME_LIMIT_EXCEEDED = 3;
+  RESOURCE_LIMIT_EXCEEDED = 4;
+}
