@@ -7,9 +7,13 @@ use std::{
 };
 
 use runtime_worker::{
-    job::{ExecutionJob, JobId}, model::{
-        ExecutionEvent, ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile, TerminationReason,
-    }, protocol::{WorkerRequest, WorkerResponse, receive, send}, worker::{Worker, WorkerServer},
+    job::{ExecutionJob, JobId},
+    model::{
+        ExecutionEvent, ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile,
+        TerminationReason,
+    },
+    protocol::{WorkerRequest, WorkerResponse, receive, send},
+    worker::{Worker, WorkerServer},
 };
 
 fn socket_path() -> PathBuf {
@@ -260,23 +264,24 @@ sys.stdout.flush()
     let mut received_started = false;
     let mut combined_stdout = Vec::new();
     let mut final_result = None;
-    let mut count = 0;
     // Loop to collect all events until we hit the final Result or Error
     loop {
         let response: WorkerResponse =
             receive(&mut stream).expect("failed to receive worker response");
 
         match response {
-            WorkerResponse::Event(event) => match event {
-                ExecutionEvent::Started => {
-                    received_started = true;
+            WorkerResponse::Event(event) => {
+                match event {
+                    ExecutionEvent::Started => {
+                        received_started = true;
+                    }
+                    ExecutionEvent::Stdout(chunk) => {
+                        combined_stdout.extend_from_slice(&chunk);
+                    }
+                    ExecutionEvent::Stderr(_) => {}
+                    ExecutionEvent::Finished { .. } => {}
                 }
-                ExecutionEvent::Stdout(chunk) => {
-                    combined_stdout.extend_from_slice(&chunk);
-                }
-                ExecutionEvent::Stderr(_) => {},
-                ExecutionEvent::Finished { .. } => {}
-            },
+            }
             WorkerResponse::Result(result) => {
                 final_result = Some(result);
                 break; // Break the loop once we get the final result
@@ -286,7 +291,6 @@ sys.stdout.flush()
             }
         }
     }
-
     // 1. Verify we got the Started event
     assert!(received_started, "Did not receive Started event");
 
