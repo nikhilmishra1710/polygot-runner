@@ -20,8 +20,7 @@ impl ProcessBackend for ForkBackend {
         cgroup: &ExecutionCgroup,
     ) -> Result<RunningProcess, WorkerError> {
         debug!("Launching process with fork_backend");
-        // fork() returns a rustix::io::Result<Option<Pid>>
-        // Note: The `?` operator requires WorkerError to implement From<rustix::io::Errno>
+        
         let stdin_pipe = pipe()
             .map_err(|e| {
                 error!("Failed to create stdin pipe: {}", e);

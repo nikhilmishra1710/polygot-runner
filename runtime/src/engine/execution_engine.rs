@@ -1,9 +1,11 @@
+use std::sync::mpsc::{Sender, SyncSender};
+
 use tracing::{error, info};
 
 use crate::{
     error::WorkerError,
     language::RuntimeRegistry,
-    model::{ExecutionReport, ExecutionRequest},
+    model::{ExecutionEvent, ExecutionReport, ExecutionRequest},
     runtime::NativeProcessRunner,
     workspace::WorkspaceManager,
 };
@@ -39,6 +41,32 @@ impl ExecutionEngine {
             info!("compilation completed!!");
         }
         let result = self.process_runner.run(plan.execute)?;
+
+        Ok(result)
+    }
+
+    pub fn execute_with_events(
+        &self,
+        request: &ExecutionRequest,
+        events: SyncSender<ExecutionEvent>,
+    ) -> Result<ExecutionReport, WorkerError> {
+        let workspace = self.workspace_manager.create(request)?;
+
+        let runtime = self.runtime_registry.get(request.language);
+
+        let plan = runtime.prepare(request, &workspace).unwrap();
+
+        if let Some(complie) = plan.compile {
+            let result = self
+                .process_runner
+                .run_with_events(complie, events.clone())?;
+            if !result.termination.is_success() {
+                error!("Some error occured");
+                return Ok(result);
+            }
+            info!("compilation completed!!");
+        }
+        let result = self.process_runner.run_with_events(plan.execute, events)?;
 
         Ok(result)
     }

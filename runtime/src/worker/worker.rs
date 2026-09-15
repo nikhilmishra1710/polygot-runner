@@ -1,7 +1,10 @@
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 
 use crate::{
-    engine::ExecutionEngine, error::WorkerError, job::{ExecutionJob, JobResult},
+    engine::ExecutionEngine,
+    error::WorkerError,
+    job::{ExecutionJob, JobResult},
+    model::ExecutionEvent,
 };
 use tracing::{debug, info};
 
@@ -19,13 +22,22 @@ impl Worker {
         }
     }
 
-    pub fn execute(
-        &self,
-        job: ExecutionJob,
-    ) -> Result<JobResult, WorkerError> {
+    pub fn execute(&self, job: ExecutionJob) -> Result<JobResult, WorkerError> {
         let id = job.id.clone();
         info!("Executing job with id: {:?}", id);
         let report = self.engine.execute(&job.request)?;
+        debug!("Job executed successfully");
+        Ok(JobResult { id, report })
+    }
+
+    pub fn execute_with_events(
+        &self,
+        job: ExecutionJob,
+        events: SyncSender<ExecutionEvent>,
+    ) -> Result<JobResult, WorkerError> {
+        let id = job.id.clone();
+        info!("Executing job with id: {:?}", id);
+        let report = self.engine.execute_with_events(&job.request, events)?;
         debug!("Job executed successfully");
         Ok(JobResult { id, report })
     }

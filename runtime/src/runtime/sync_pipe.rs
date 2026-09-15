@@ -3,8 +3,6 @@ use std::{
     os::fd::{AsRawFd, OwnedFd},
 };
 
-use crate::runtime::unix::pipe;
-
 pub struct ParentCoordinator {
     ready: OwnedFd,
     continue_fd: OwnedFd,

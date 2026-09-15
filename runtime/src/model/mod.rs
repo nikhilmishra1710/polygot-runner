@@ -1,4 +1,5 @@
 mod analytics;
+mod execution_event;
 mod execution_plan;
 mod execution_request;
 mod execution_result;
@@ -8,6 +9,7 @@ mod resource_limits;
 mod source_file;
 
 pub use analytics::{ExecutionMetrics, ExecutionReport, Output, TerminationReason};
+pub use execution_event::ExecutionEvent;
 pub use execution_plan::ExecutionPlan;
 pub use execution_request::ExecutionRequest;
 pub use execution_result::ExecutionResult;

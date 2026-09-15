@@ -2,11 +2,14 @@ use std::{
     io,
     os::unix::net::{UnixListener, UnixStream},
     path::Path,
+    sync::mpsc,
+    thread,
 };
 
 use tracing::{debug, error, info};
 
 use crate::{
+    model::ExecutionEvent,
     protocol::{self, WorkerRequest, WorkerResponse},
     worker::Worker,
 };
@@ -63,18 +66,17 @@ impl WorkerServer {
 
     fn handle_connection(&self, mut stream: UnixStream) -> io::Result<bool> {
         debug!("Handling new connection");
+
         loop {
             let request: WorkerRequest = match protocol::receive(&mut stream) {
                 Ok(request) => {
                     debug!("Received request: {:?}", request);
                     request
                 }
-
                 Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
                     debug!("Client disconnected unexpectedly (EOF)");
                     break;
                 }
-
                 Err(error) => {
                     error!("Failed to receive request: {}", error);
                     let response = WorkerResponse::Error(error.to_string());
@@ -88,17 +90,37 @@ impl WorkerServer {
             match request {
                 WorkerRequest::Execute(job) => {
                     info!("Executing job with id: {:?}", job.id);
-                    let response = match self.worker.execute(job) {
-                        Ok(result) => {
-                            debug!("Job executed successfully");
-                            WorkerResponse::Result(result)
-                        }
-                        Err(error) => {
-                            error!("Job execution failed: {}", error);
-                            WorkerResponse::Error(error.to_string())
-                        }
-                    };
 
+                    // Create the channel INSIDE the loop so each job gets a fresh event stream
+                    let (event_tx, event_rx) = mpsc::sync_channel::<ExecutionEvent>(128);
+
+                    // Use thread::scope so we can safely borrow `self` in the background thread
+                    let response = thread::scope(|s| {
+                        // 1. Spawn the worker execution in a scoped background thread
+                        let worker_handle =
+                            s.spawn(|| match self.worker.execute_with_events(job, event_tx) {
+                                Ok(result) => {
+                                    debug!("Job executed successfully");
+                                    WorkerResponse::Result(result)
+                                }
+                                Err(error) => {
+                                    error!("Job execution failed: {}", error);
+                                    WorkerResponse::Error(error.to_string())
+                                }
+                            });
+
+                        // 2. Actively drain the event channel on the main thread!
+                        // This prevents the sync_channel from filling up and deadlocking the worker.
+                        for event in event_rx {
+                            debug!("Live event from worker: {:?}", event);
+                            let _ = protocol::send(&mut stream, &WorkerResponse::Event(event));
+                        }
+
+                        // 3. Wait for the final response (the channel closes when the worker finishes, so the `for` loop will exit)
+                        worker_handle.join().unwrap()
+                    });
+
+                    // 4. Send the final response to the stream
                     if let Err(e) = protocol::send(&mut stream, &response) {
                         error!("Failed to send response: {}", e);
                         break;

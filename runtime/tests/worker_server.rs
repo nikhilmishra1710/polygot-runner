@@ -7,12 +7,9 @@ use std::{
 };
 
 use runtime_worker::{
-    job::{ExecutionJob, JobId},
-    model::{
-        ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile, TerminationReason,
-    },
-    protocol::{WorkerRequest, WorkerResponse, receive, send},
-    worker::{Worker, WorkerServer},
+    job::{ExecutionJob, JobId}, model::{
+        ExecutionEvent, ExecutionRequest, ExecutionStatus, Language, ResourceLimits, SourceFile, TerminationReason,
+    }, protocol::{WorkerRequest, WorkerResponse, receive, send}, worker::{Worker, WorkerServer},
 };
 
 fn socket_path() -> PathBuf {
@@ -79,6 +76,8 @@ fn unix_socket_executes_job_end_to_end() {
         WorkerResponse::Error(error) => {
             panic!("worker returned protocol error: {error}");
         }
+
+        WorkerResponse::Event(..) => {}
     }
 
     // Shut the server down cleanly.
@@ -147,6 +146,8 @@ fn unix_socket_returns_execution_failure_without_killing_server() {
         WorkerResponse::Error(error) => {
             panic!("worker returned protocol error: {error}");
         }
+
+        WorkerResponse::Event(..) => {}
     }
 
     // ------------------------------------------------------------
@@ -189,6 +190,8 @@ fn unix_socket_returns_execution_failure_without_killing_server() {
         WorkerResponse::Error(error) => {
             panic!("worker returned protocol error: {error}");
         }
+
+        WorkerResponse::Event(..) => {}
     }
 
     // ------------------------------------------------------------
@@ -202,4 +205,105 @@ fn unix_socket_returns_execution_failure_without_killing_server() {
     server_thread.join().expect("worker server thread panicked");
 
     assert!(!socket.exists(), "worker socket was not cleaned up");
+}
+
+#[test]
+fn unix_socket_streams_execution_events() {
+    let socket = socket_path();
+    let server_socket = socket.clone();
+
+    let server_thread = thread::spawn(move || {
+        let worker = Worker::new();
+        let server = WorkerServer::new(worker);
+        server.bind(&server_socket).expect("worker server failed");
+    });
+
+    // Wait for the server to bind.
+    let mut stream = loop {
+        match UnixStream::connect(&socket) {
+            Ok(stream) => break stream,
+            Err(_) => thread::sleep(Duration::from_millis(10)),
+        }
+    };
+
+    // Python script that explicitly flushes to guarantee multiple stdout chunks
+    let script = r#"
+import sys
+import time
+
+sys.stdout.write('hello\n')
+sys.stdout.flush()
+
+time.sleep(0.05)
+
+sys.stdout.write('world\n')
+sys.stdout.flush()
+"#;
+
+    let request = ExecutionRequest {
+        language: Language::Python,
+        files: vec![SourceFile {
+            path: "main.py".into(),
+            contents: script.as_bytes().to_vec(),
+        }],
+        stdin: Vec::new(),
+        limits: ResourceLimits::default(),
+    };
+
+    let job = ExecutionJob {
+        id: JobId("streaming-job".to_string()),
+        request,
+    };
+
+    send(&mut stream, &WorkerRequest::Execute(job)).expect("failed to send execution request");
+
+    let mut received_started = false;
+    let mut combined_stdout = Vec::new();
+    let mut final_result = None;
+    let mut count = 0;
+    // Loop to collect all events until we hit the final Result or Error
+    loop {
+        let response: WorkerResponse =
+            receive(&mut stream).expect("failed to receive worker response");
+
+        match response {
+            WorkerResponse::Event(event) => match event {
+                ExecutionEvent::Started => {
+                    received_started = true;
+                }
+                ExecutionEvent::Stdout(chunk) => {
+                    combined_stdout.extend_from_slice(&chunk);
+                }
+                ExecutionEvent::Stderr(_) => {},
+                ExecutionEvent::Finished { .. } => {}
+            },
+            WorkerResponse::Result(result) => {
+                final_result = Some(result);
+                break; // Break the loop once we get the final result
+            }
+            WorkerResponse::Error(error) => {
+                panic!("worker returned protocol error: {error}");
+            }
+        }
+    }
+
+    // 1. Verify we got the Started event
+    assert!(received_started, "Did not receive Started event");
+
+    // 2. Verify all streamed stdout chunks combined correctly
+    assert_eq!(String::from_utf8_lossy(&combined_stdout), "hello\nworld\n");
+
+    // 3. Verify the final result report still contains the full output and correct status
+    let result = final_result.unwrap();
+    assert_eq!(result.id, JobId("streaming-job".to_string()));
+    assert_eq!(result.report.termination, TerminationReason::ExitCode(0));
+    assert_eq!(
+        String::from_utf8_lossy(&result.report.output.stdout),
+        "hello\nworld\n"
+    );
+
+    // Shutdown cleanly
+    send(&mut stream, &WorkerRequest::Shutdown).expect("failed to send shutdown");
+    drop(stream);
+    server_thread.join().expect("worker server thread panicked");
 }
