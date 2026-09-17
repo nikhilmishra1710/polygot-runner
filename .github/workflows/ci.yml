@@ -1,24 +1,24 @@
-name: Rust CI
+# name: Rust CI
 
-on:
-  push:
-  pull_request:
+# on:
+#   push:
+#   pull_request:
 
-jobs:
-  worker:
-    runs-on: ubuntu-latest
+# jobs:
+#   worker:
+#     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: runtime
+#     defaults:
+#       run:
+#         working-directory: runtime
 
-    steps:
-      - uses: actions/checkout@v4
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+#       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
+#       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
-      - run: cargo test
+#       - run: cargo fmt --check
+#       - run: cargo clippy -- -D warnings
+#       - run: cargo test

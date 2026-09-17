@@ -288,10 +288,6 @@ impl NativeProcessRunner {
             "Execution finished"
         );
 
-        let _ = event_tx.send(ExecutionEvent::Finished {
-            termination: termination.clone(),
-        });
-
         Ok(ExecutionReport {
             output: Output {
                 stdout: stdout_data,

@@ -4,7 +4,7 @@ use crate::model::ExecutionReport;
 
 use super::JobId;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobResult {
     pub id: JobId,
     pub report: ExecutionReport,

@@ -270,18 +270,16 @@ sys.stdout.flush()
             receive(&mut stream).expect("failed to receive worker response");
 
         match response {
-            WorkerResponse::Event(event) => {
-                match event {
-                    ExecutionEvent::Started => {
-                        received_started = true;
-                    }
-                    ExecutionEvent::Stdout(chunk) => {
-                        combined_stdout.extend_from_slice(&chunk);
-                    }
-                    ExecutionEvent::Stderr(_) => {}
-                    ExecutionEvent::Finished { .. } => {}
+            WorkerResponse::Event(event) => match event {
+                ExecutionEvent::Started => {
+                    received_started = true;
                 }
-            }
+                ExecutionEvent::Stdout(chunk) => {
+                    combined_stdout.extend_from_slice(&chunk);
+                }
+                ExecutionEvent::Stderr(_) => {}
+                ExecutionEvent::Finished { .. } => {}
+            },
             WorkerResponse::Result(result) => {
                 final_result = Some(result);
                 break; // Break the loop once we get the final result

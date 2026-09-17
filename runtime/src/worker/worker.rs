@@ -37,9 +37,15 @@ impl Worker {
     ) -> Result<JobResult, WorkerError> {
         let id = job.id.clone();
         info!("Executing job with id: {:?}", id);
-        let report = self.engine.execute_with_events(&job.request, events)?;
+        let report = self
+            .engine
+            .execute_with_events(&job.request, events.clone())?;
+        let job_result = JobResult { id, report };
+        let _ = events.send(ExecutionEvent::Finished {
+            result: job_result.clone(),
+        });
         debug!("Job executed successfully");
-        Ok(JobResult { id, report })
+        Ok(job_result)
     }
 
     pub fn run(
