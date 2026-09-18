@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
+	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -14,32 +14,74 @@ import (
 )
 
 func main() {
-	// 1. Connect to the Rust gRPC Worker
-	conn, err := grpc.Dial("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	workerAddr := os.Getenv("WORKER_ADDR")
+	if workerAddr == "" {
+		workerAddr = "127.0.0.1:50051"
+	}
+
+	apiAddr := os.Getenv("API_ADDR")
+	if apiAddr == "" {
+		apiAddr = "0.0.0.0:8080"
+	}
+
+	log.Printf("Connecting to worker at %s...", workerAddr)
+
+	conn, err := grpc.Dial(workerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to connect to Rust worker: %v", err)
+		log.Fatalf("Failed to connect to worker: %v", err)
 	}
 	defer conn.Close()
 
-	// Automatically generated gRPC client!
 	workerClient := pb.NewExecutionServiceClient(conn)
-	handler := api.NewHandler(workerClient)
+	store := api.NewInMemoryStore()
+	manager := api.NewExecutionManager(store)
+	handler := api.NewHandler(workerClient, manager)
 
-	// 2. Setup Frontend Routes
-	// 2. Setup Frontend Routes
-	http.HandleFunc("/ws/v1/execute", handler.StreamHandler) // Live WebSocket
-	http.HandleFunc("/v1/execute", handler.SyncHandler)      // Standard REST POST
+	mux := http.NewServeMux()
 
-	// 3. Start the Server
-	go func() {
-		log.Println("Starting UI Gateway on :8080")
-		if err := http.ListenAndServe(":8080", nil); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
+	// Exact match for the base collection path
+	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.CreateExecution(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	}()
+	})
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-	<-quit
-	log.Println("Server exited cleanly")
+	// Sub-path router for /v1/executions/{id}/*
+	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
+		parts := strings.Split(path, "/")
+		id := parts[0]
+
+		if id == "" {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+
+		// GET /v1/executions/{id}
+		if len(parts) == 1 && r.Method == http.MethodGet {
+			handler.GetExecution(w, r, id)
+			return
+		}
+
+		// GET (WS) /v1/executions/{id}/stream
+		if len(parts) == 2 && parts[1] == "stream" && r.Method == http.MethodGet {
+			handler.StreamExecution(w, r, id)
+			return
+		}
+
+		// POST /v1/executions/{id}/cancel
+		if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
+			handler.CancelExecution(w, r, id)
+			return
+		}
+
+		http.Error(w, "Not found", http.StatusNotFound)
+	})
+
+	log.Printf("Starting Go API Gateway on %s...", apiAddr)
+	if err := http.ListenAndServe(apiAddr, mux); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
 }

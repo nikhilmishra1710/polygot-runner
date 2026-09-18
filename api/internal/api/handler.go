@@ -1,116 +1,122 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
-	"github.com/gorilla/websocket"
-	"io"
-	"log"
 	"net/http"
+
+	"github.com/gorilla/websocket"
 	pb "runtime-platform/api/gen/execution/v1"
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true }, // Restrict in production
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 type Handler struct {
 	workerClient pb.ExecutionServiceClient
+	manager      *ExecutionManager
 }
 
-func NewHandler(wc pb.ExecutionServiceClient) *Handler {
-	return &Handler{workerClient: wc}
+func NewHandler(wc pb.ExecutionServiceClient, manager *ExecutionManager) *Handler {
+	return &Handler{
+		workerClient: wc,
+		manager:      manager,
+	}
 }
 
-func (h *Handler) StreamHandler(w http.ResponseWriter, r *http.Request) {
+// POST /v1/executions
+func (h *Handler) CreateExecution(w http.ResponseWriter, r *http.Request) {
+	var req pb.ExecuteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Use context.Background() so the job survives after the HTTP request finishes
+	jobID, execCtx := h.manager.Start(context.Background(), &req)
+
+	go func() {
+		defer h.manager.Cleanup(jobID)
+
+		h.manager.Store.UpdateState(context.Background(), jobID, StateRunning, nil)
+		stream, err := h.workerClient.Execute(execCtx, &req)
+		if err != nil {
+			h.manager.Store.UpdateState(context.Background(), jobID, StateFailed, nil)
+			return
+		}
+
+		for {
+			event, err := stream.Recv()
+			if err != nil {
+				break
+			}
+
+			h.manager.RouteEvent(jobID, event)
+
+			if event.Type == pb.ExecutionEvent_FINISHED {
+				h.manager.Store.UpdateState(context.Background(), jobID, StateCompleted, event.FinalResult)
+			}
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"id": jobID})
+}
+
+// GET /v1/executions/{id}
+func (h *Handler) GetExecution(w http.ResponseWriter, r *http.Request, id string) {
+	exec, err := h.manager.Store.Get(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Execution not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":         exec.ID,
+		"state":      exec.State,
+		"created_at": exec.CreatedAt,
+		"result":     exec.Result,
+	})
+}
+
+// GET /v1/executions/{id}/stream (Upgrades to WebSocket)
+func (h *Handler) StreamExecution(w http.ResponseWriter, r *http.Request, id string) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	// 1. Read the ExecuteRequest from the browser
-	var req pb.ExecuteRequest
-	if err := conn.ReadJSON(&req); err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte("Invalid request JSON"))
-		return
-	}
-
-	// (Optional) Call your existing ValidateExecutionRequest(&req) here
-
-	// 2. Open the gRPC stream to Rust
-	stream, err := h.workerClient.Execute(r.Context(), &req)
-	if err != nil {
-		conn.WriteMessage(websocket.TextMessage, []byte("Worker unavailable"))
-		return
-	}
-
-	// 3. Pipe gRPC events directly to the WebSocket
-	for {
-		event, err := stream.Recv()
-		if err == io.EOF {
-			break // Rust cleanly closed the stream
-		}
-		if err != nil {
-			log.Printf("gRPC stream error: %v", err)
-			break
-		}
-
+	history, _ := h.manager.Store.GetEvents(r.Context(), id)
+	for _, event := range history {
 		if err := conn.WriteJSON(event); err != nil {
-			log.Printf("Client disconnected: %v", err)
-			break
+			return
 		}
 	}
 
-	// Close cleanly
+	exec, err := h.manager.Store.Get(r.Context(), id)
+	if err != nil {
+		conn.WriteJSON(map[string]string{"error": "Execution not found"})
+		return
+	}
+
+	if exec.State == StateRunning || exec.State == StateCreated {
+		liveEvents := h.manager.Subscribe(id)
+		for event := range liveEvents {
+			if err := conn.WriteJSON(event); err != nil {
+				break
+			}
+		}
+	}
+
 	conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 }
 
-// SyncHandler provides a standard REST interface that waits for the execution to finish
-func (h *Handler) SyncHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// 1. Parse the incoming JSON into the protobuf request
-	var req pb.ExecuteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request JSON", http.StatusBadRequest)
-		return
-	}
-
-	// 2. Open the gRPC stream to the Rust worker
-	stream, err := h.workerClient.Execute(r.Context(), &req)
-	if err != nil {
-		http.Error(w, "Worker unavailable: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	var finalResult *pb.JobResult
-
-	// 3. Consume the stream until we get the final result or an EOF
-	for {
-		event, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			http.Error(w, "Execution stream failed: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// We only care about the FINISHED event for this synchronous endpoint
-		if event.Type == pb.ExecutionEvent_FINISHED {
-			finalResult = event.FinalResult
-		}
-	}
-
-	// 4. Return the final result as JSON
-	if finalResult == nil {
-		http.Error(w, "Execution finished without a result", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(finalResult)
+// POST /v1/executions/{id}/cancel
+func (h *Handler) CancelExecution(w http.ResponseWriter, r *http.Request, id string) {
+	h.manager.Cancel(id)
+	w.WriteHeader(http.StatusNoContent)
 }

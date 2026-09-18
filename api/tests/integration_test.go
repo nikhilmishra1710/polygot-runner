@@ -8,6 +8,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -355,32 +356,38 @@ func TestGoAPIConcurrentWebSockets(t *testing.T) {
 	addr := startWorkerd(t)
 	grpcClient := clientFor(t, addr)
 
-	// 2. Start the Go API layer in a test HTTP server
-	handler := api.NewHandler(grpcClient)
+	// 2. Initialize the new state manager and store
+	store := api.NewInMemoryStore()
+	manager := api.NewExecutionManager(store)
+	handler := api.NewHandler(grpcClient, manager)
+
+	// 3. Start the Go API layer in a test HTTP server with the new REST routing
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws/v1/execute", handler.StreamHandler)
+
+	// Bind POST /v1/executions
+	mux.HandleFunc("/v1/executions", handler.CreateExecution)
+
+	// Bind GET (WS) /v1/executions/{id}/stream
+	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
+		parts := strings.Split(path, "/")
+		if len(parts) == 2 && parts[1] == "stream" {
+			handler.StreamExecution(w, r, parts[0])
+		} else {
+			http.Error(w, "Not found", http.StatusNotFound)
+		}
+	})
+
 	server := httptest.NewServer(mux)
 	defer server.Close()
-
-	// Convert http:// to ws://
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/v1/execute"
 
 	var wg sync.WaitGroup
 	startTime := time.Now()
 
-	// 3. Define the concurrent worker function
+	// 4. Define the concurrent worker function
 	runClient := func(identity string) {
 		defer wg.Done()
 
-		// Dial the Go WebSocket endpoint
-		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
-		if err != nil {
-			t.Errorf("Client %s failed to connect: %v", identity, err)
-			return
-		}
-		defer conn.Close()
-
-		// Python script that takes ~1.5s to run
 		script := `
 import time, sys
 print("START ` + identity + `")
@@ -398,11 +405,30 @@ print("END ` + identity + `")
 			},
 		}
 
-		// Send request over WebSocket
-		if err := conn.WriteJSON(req); err != nil {
-			t.Errorf("Client %s failed to send: %v", identity, err)
+		// Step A: POST to /v1/executions to start the job
+		reqBody, _ := json.Marshal(req)
+		resp, err := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
+		if err != nil {
+			t.Errorf("Client %s failed to POST: %v", identity, err)
 			return
 		}
+		defer resp.Body.Close()
+
+		var result map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			t.Errorf("Client %s failed to decode response: %v", identity, err)
+			return
+		}
+		jobID := result["id"]
+
+		// Step B: Connect to the WebSocket stream using the new WS path
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/executions/" + jobID + "/stream"
+		conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Errorf("Client %s failed to connect WS: %v", identity, err)
+			return
+		}
+		defer conn.Close()
 
 		var stdout []byte
 
@@ -416,7 +442,6 @@ print("END ` + identity + `")
 				break
 			}
 
-			// We use a generic map to parse the JSON for flexibility in the test
 			var event map[string]interface{}
 			if err := json.Unmarshal(msg, &event); err != nil {
 				continue
@@ -424,7 +449,6 @@ print("END ` + identity + `")
 
 			// Check for STDOUT events (Type 1)
 			if evtType, ok := event["type"].(float64); ok && evtType == 1 {
-				// The base64 output comes in the "data" field
 				if dataStr, ok := event["data"].(string); ok {
 					decoded, _ := base64.StdEncoding.DecodeString(dataStr)
 					stdout = append(stdout, decoded...)
@@ -438,7 +462,7 @@ print("END ` + identity + `")
 		}
 	}
 
-	// 4. Fire off 3 concurrent WebSocket clients
+	// 5. Fire off 3 concurrent clients
 	wg.Add(3)
 	go runClient("A")
 	go runClient("B")
@@ -447,10 +471,123 @@ print("END ` + identity + `")
 	wg.Wait()
 	elapsed := time.Since(startTime)
 
-	// 5. Assert Parallelism
-	// 3 jobs taking 1.5s each would take 4.5s sequentially.
-	// If it takes < 2.5s, Go is correctly handling concurrent WebSocket upgrades.
 	if elapsed > 2500*time.Millisecond {
 		t.Errorf("Go API serialized the requests! Total time: %v", elapsed)
 	}
+}
+
+func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
+	addr := startWorkerd(t)
+	grpcClient := clientFor(t, addr)
+
+	store := api.NewInMemoryStore()
+	manager := api.NewExecutionManager(store)
+	handler := api.NewHandler(grpcClient, manager)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.CreateExecution(w, r)
+		}
+	})
+	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
+		parts := strings.Split(path, "/")
+		id := parts[0]
+
+		if len(parts) == 1 && r.Method == http.MethodGet {
+			handler.GetExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
+			handler.CancelExecution(w, r, id)
+		} else {
+			http.Error(w, "Not found", http.StatusNotFound)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	t.Run("SuccessLifecycle", func(t *testing.T) {
+		req := &pb.ExecuteRequest{
+			Language: "python",
+			Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte(`print("Done")`)}},
+		}
+		reqBody, _ := json.Marshal(req)
+
+		// 1. POST to start job
+		resp, err := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
+		if err != nil {
+			t.Fatalf("POST failed: %v", err)
+		}
+		var postRes map[string]string
+		json.NewDecoder(resp.Body).Decode(&postRes)
+		resp.Body.Close()
+		jobID := postRes["id"]
+
+		// 2. Poll GET until state is COMPLETED
+		timeout := time.After(3 * time.Second)
+		var finalState string
+		for {
+			select {
+			case <-timeout:
+				t.Fatalf("Timeout waiting for COMPLETED state. Last state: %s", finalState)
+			default:
+				getResp, _ := http.Get(server.URL + "/v1/executions/" + jobID)
+				var getRes map[string]interface{}
+				json.NewDecoder(getResp.Body).Decode(&getRes)
+				getResp.Body.Close()
+
+				finalState = getRes["state"].(string)
+				if finalState == string(api.StateCompleted) {
+					// Verify result populated
+					if getRes["result"] == nil {
+						t.Errorf("Expected result payload in COMPLETED state, got nil")
+					}
+					return
+				}
+				if finalState == string(api.StateFailed) {
+					t.Fatalf("Job failed unexpectedly")
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+		}
+	})
+
+	t.Run("CancellationLifecycle", func(t *testing.T) {
+		req := &pb.ExecuteRequest{
+			Language: "python",
+			Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte(`import time; time.sleep(10)`)}},
+		}
+		reqBody, _ := json.Marshal(req)
+
+		// 1. POST to start long-running job
+		resp, _ := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
+		var postRes map[string]string
+		json.NewDecoder(resp.Body).Decode(&postRes)
+		resp.Body.Close()
+		jobID := postRes["id"]
+
+		// Wait slightly to ensure it transitions from CREATED to RUNNING
+		time.Sleep(100 * time.Millisecond)
+
+		// 2. POST to cancel
+		cancelReq, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/executions/"+jobID+"/cancel", nil)
+		cancelResp, _ := http.DefaultClient.Do(cancelReq)
+		cancelResp.Body.Close()
+
+		if cancelResp.StatusCode != http.StatusNoContent {
+			t.Errorf("Expected 204 No Content on cancel, got %d", cancelResp.StatusCode)
+		}
+
+		// 3. Verify state is CANCELLED
+		getResp, _ := http.Get(server.URL + "/v1/executions/" + jobID)
+		var getRes map[string]interface{}
+		json.NewDecoder(getResp.Body).Decode(&getRes)
+		getResp.Body.Close()
+
+		state := getRes["state"].(string)
+		if state != string(api.StateCancelled) {
+			t.Errorf("Expected state %s, got %s", api.StateCancelled, state)
+		}
+	})
 }
