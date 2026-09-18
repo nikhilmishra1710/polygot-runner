@@ -9,6 +9,7 @@ package v1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -21,59 +22,56 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type ExecutionStatus int32
+type ExecutionEvent_EventType int32
 
 const (
-	ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED ExecutionStatus = 0
-	ExecutionStatus_SUCCESS                      ExecutionStatus = 1
-	ExecutionStatus_RUNTIME_ERROR                ExecutionStatus = 2
-	ExecutionStatus_TIME_LIMIT_EXCEEDED          ExecutionStatus = 3
-	ExecutionStatus_RESOURCE_LIMIT_EXCEEDED      ExecutionStatus = 4
+	ExecutionEvent_STARTED  ExecutionEvent_EventType = 0
+	ExecutionEvent_STDOUT   ExecutionEvent_EventType = 1
+	ExecutionEvent_STDERR   ExecutionEvent_EventType = 2
+	ExecutionEvent_FINISHED ExecutionEvent_EventType = 3
 )
 
-// Enum value maps for ExecutionStatus.
+// Enum value maps for ExecutionEvent_EventType.
 var (
-	ExecutionStatus_name = map[int32]string{
-		0: "EXECUTION_STATUS_UNSPECIFIED",
-		1: "SUCCESS",
-		2: "RUNTIME_ERROR",
-		3: "TIME_LIMIT_EXCEEDED",
-		4: "RESOURCE_LIMIT_EXCEEDED",
+	ExecutionEvent_EventType_name = map[int32]string{
+		0: "STARTED",
+		1: "STDOUT",
+		2: "STDERR",
+		3: "FINISHED",
 	}
-	ExecutionStatus_value = map[string]int32{
-		"EXECUTION_STATUS_UNSPECIFIED": 0,
-		"SUCCESS":                      1,
-		"RUNTIME_ERROR":                2,
-		"TIME_LIMIT_EXCEEDED":          3,
-		"RESOURCE_LIMIT_EXCEEDED":      4,
+	ExecutionEvent_EventType_value = map[string]int32{
+		"STARTED":  0,
+		"STDOUT":   1,
+		"STDERR":   2,
+		"FINISHED": 3,
 	}
 )
 
-func (x ExecutionStatus) Enum() *ExecutionStatus {
-	p := new(ExecutionStatus)
+func (x ExecutionEvent_EventType) Enum() *ExecutionEvent_EventType {
+	p := new(ExecutionEvent_EventType)
 	*p = x
 	return p
 }
 
-func (x ExecutionStatus) String() string {
+func (x ExecutionEvent_EventType) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (ExecutionStatus) Descriptor() protoreflect.EnumDescriptor {
+func (ExecutionEvent_EventType) Descriptor() protoreflect.EnumDescriptor {
 	return file_execution_proto_enumTypes[0].Descriptor()
 }
 
-func (ExecutionStatus) Type() protoreflect.EnumType {
+func (ExecutionEvent_EventType) Type() protoreflect.EnumType {
 	return &file_execution_proto_enumTypes[0]
 }
 
-func (x ExecutionStatus) Number() protoreflect.EnumNumber {
+func (x ExecutionEvent_EventType) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use ExecutionStatus.Descriptor instead.
-func (ExecutionStatus) EnumDescriptor() ([]byte, []int) {
-	return file_execution_proto_rawDescGZIP(), []int{0}
+// Deprecated: Use ExecutionEvent_EventType.Descriptor instead.
+func (ExecutionEvent_EventType) EnumDescriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type ExecuteRequest struct {
@@ -188,31 +186,29 @@ func (x *SourceFile) GetContents() []byte {
 	return nil
 }
 
-type ExecuteResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Status        ExecutionStatus        `protobuf:"varint,2,opt,name=status,proto3,enum=execution.v1.ExecutionStatus" json:"status,omitempty"`
-	Stdout        []byte                 `protobuf:"bytes,3,opt,name=stdout,proto3" json:"stdout,omitempty"`
-	Stderr        []byte                 `protobuf:"bytes,4,opt,name=stderr,proto3" json:"stderr,omitempty"`
-	ExitCode      *int32                 `protobuf:"varint,5,opt,name=exit_code,json=exitCode,proto3,oneof" json:"exit_code,omitempty"`
+type ExecutionEvent struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Type          ExecutionEvent_EventType `protobuf:"varint,1,opt,name=type,proto3,enum=execution.v1.ExecutionEvent_EventType" json:"type,omitempty"`
+	Data          []byte                   `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	FinalResult   *JobResult               `protobuf:"bytes,3,opt,name=final_result,json=finalResult,proto3" json:"final_result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecuteResponse) Reset() {
-	*x = ExecuteResponse{}
+func (x *ExecutionEvent) Reset() {
+	*x = ExecutionEvent{}
 	mi := &file_execution_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecuteResponse) String() string {
+func (x *ExecutionEvent) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecuteResponse) ProtoMessage() {}
+func (*ExecutionEvent) ProtoMessage() {}
 
-func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
+func (x *ExecutionEvent) ProtoReflect() protoreflect.Message {
 	mi := &file_execution_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -224,42 +220,424 @@ func (x *ExecuteResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecuteResponse.ProtoReflect.Descriptor instead.
-func (*ExecuteResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExecutionEvent.ProtoReflect.Descriptor instead.
+func (*ExecutionEvent) Descriptor() ([]byte, []int) {
 	return file_execution_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ExecuteResponse) GetId() string {
+func (x *ExecutionEvent) GetType() ExecutionEvent_EventType {
+	if x != nil {
+		return x.Type
+	}
+	return ExecutionEvent_STARTED
+}
+
+func (x *ExecutionEvent) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ExecutionEvent) GetFinalResult() *JobResult {
+	if x != nil {
+		return x.FinalResult
+	}
+	return nil
+}
+
+type JobResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Report        *ExecutionReport       `protobuf:"bytes,2,opt,name=report,proto3" json:"report,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobResult) Reset() {
+	*x = JobResult{}
+	mi := &file_execution_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobResult) ProtoMessage() {}
+
+func (x *JobResult) ProtoReflect() protoreflect.Message {
+	mi := &file_execution_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobResult.ProtoReflect.Descriptor instead.
+func (*JobResult) Descriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *JobResult) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *ExecuteResponse) GetStatus() ExecutionStatus {
+func (x *JobResult) GetReport() *ExecutionReport {
 	if x != nil {
-		return x.Status
+		return x.Report
 	}
-	return ExecutionStatus_EXECUTION_STATUS_UNSPECIFIED
+	return nil
 }
 
-func (x *ExecuteResponse) GetStdout() []byte {
+type ExecutionReport struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Output        *Output                `protobuf:"bytes,1,opt,name=output,proto3" json:"output,omitempty"`
+	Termination   *TerminationReason     `protobuf:"bytes,2,opt,name=termination,proto3" json:"termination,omitempty"`
+	Metrics       *ExecutionMetrics      `protobuf:"bytes,3,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionReport) Reset() {
+	*x = ExecutionReport{}
+	mi := &file_execution_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionReport) ProtoMessage() {}
+
+func (x *ExecutionReport) ProtoReflect() protoreflect.Message {
+	mi := &file_execution_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionReport.ProtoReflect.Descriptor instead.
+func (*ExecutionReport) Descriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ExecutionReport) GetOutput() *Output {
+	if x != nil {
+		return x.Output
+	}
+	return nil
+}
+
+func (x *ExecutionReport) GetTermination() *TerminationReason {
+	if x != nil {
+		return x.Termination
+	}
+	return nil
+}
+
+func (x *ExecutionReport) GetMetrics() *ExecutionMetrics {
+	if x != nil {
+		return x.Metrics
+	}
+	return nil
+}
+
+type Output struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Stdout        []byte                 `protobuf:"bytes,1,opt,name=stdout,proto3" json:"stdout,omitempty"`
+	Stderr        []byte                 `protobuf:"bytes,2,opt,name=stderr,proto3" json:"stderr,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Output) Reset() {
+	*x = Output{}
+	mi := &file_execution_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Output) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Output) ProtoMessage() {}
+
+func (x *Output) ProtoReflect() protoreflect.Message {
+	mi := &file_execution_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Output.ProtoReflect.Descriptor instead.
+func (*Output) Descriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *Output) GetStdout() []byte {
 	if x != nil {
 		return x.Stdout
 	}
 	return nil
 }
 
-func (x *ExecuteResponse) GetStderr() []byte {
+func (x *Output) GetStderr() []byte {
 	if x != nil {
 		return x.Stderr
 	}
 	return nil
 }
 
-func (x *ExecuteResponse) GetExitCode() int32 {
-	if x != nil && x.ExitCode != nil {
-		return *x.ExitCode
+type TerminationReason struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Using oneof perfectly mirrors Rust's enum behavior
+	//
+	// Types that are valid to be assigned to Reason:
+	//
+	//	*TerminationReason_ExitCode
+	//	*TerminationReason_Signal
+	//	*TerminationReason_WallTimeout
+	//	*TerminationReason_CpuLimit
+	//	*TerminationReason_MemoryLimit
+	//	*TerminationReason_OomKilled
+	//	*TerminationReason_SeccompViolation
+	Reason        isTerminationReason_Reason `protobuf_oneof:"reason"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TerminationReason) Reset() {
+	*x = TerminationReason{}
+	mi := &file_execution_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminationReason) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminationReason) ProtoMessage() {}
+
+func (x *TerminationReason) ProtoReflect() protoreflect.Message {
+	mi := &file_execution_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminationReason.ProtoReflect.Descriptor instead.
+func (*TerminationReason) Descriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TerminationReason) GetReason() isTerminationReason_Reason {
+	if x != nil {
+		return x.Reason
+	}
+	return nil
+}
+
+func (x *TerminationReason) GetExitCode() int32 {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_ExitCode); ok {
+			return x.ExitCode
+		}
+	}
+	return 0
+}
+
+func (x *TerminationReason) GetSignal() int32 {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_Signal); ok {
+			return x.Signal
+		}
+	}
+	return 0
+}
+
+func (x *TerminationReason) GetWallTimeout() bool {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_WallTimeout); ok {
+			return x.WallTimeout
+		}
+	}
+	return false
+}
+
+func (x *TerminationReason) GetCpuLimit() bool {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_CpuLimit); ok {
+			return x.CpuLimit
+		}
+	}
+	return false
+}
+
+func (x *TerminationReason) GetMemoryLimit() bool {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_MemoryLimit); ok {
+			return x.MemoryLimit
+		}
+	}
+	return false
+}
+
+func (x *TerminationReason) GetOomKilled() bool {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_OomKilled); ok {
+			return x.OomKilled
+		}
+	}
+	return false
+}
+
+func (x *TerminationReason) GetSeccompViolation() bool {
+	if x != nil {
+		if x, ok := x.Reason.(*TerminationReason_SeccompViolation); ok {
+			return x.SeccompViolation
+		}
+	}
+	return false
+}
+
+type isTerminationReason_Reason interface {
+	isTerminationReason_Reason()
+}
+
+type TerminationReason_ExitCode struct {
+	ExitCode int32 `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3,oneof"`
+}
+
+type TerminationReason_Signal struct {
+	Signal int32 `protobuf:"varint,2,opt,name=signal,proto3,oneof"`
+}
+
+type TerminationReason_WallTimeout struct {
+	WallTimeout bool `protobuf:"varint,3,opt,name=wall_timeout,json=wallTimeout,proto3,oneof"`
+}
+
+type TerminationReason_CpuLimit struct {
+	CpuLimit bool `protobuf:"varint,4,opt,name=cpu_limit,json=cpuLimit,proto3,oneof"`
+}
+
+type TerminationReason_MemoryLimit struct {
+	MemoryLimit bool `protobuf:"varint,5,opt,name=memory_limit,json=memoryLimit,proto3,oneof"`
+}
+
+type TerminationReason_OomKilled struct {
+	OomKilled bool `protobuf:"varint,6,opt,name=oom_killed,json=oomKilled,proto3,oneof"`
+}
+
+type TerminationReason_SeccompViolation struct {
+	SeccompViolation bool `protobuf:"varint,7,opt,name=seccomp_violation,json=seccompViolation,proto3,oneof"`
+}
+
+func (*TerminationReason_ExitCode) isTerminationReason_Reason() {}
+
+func (*TerminationReason_Signal) isTerminationReason_Reason() {}
+
+func (*TerminationReason_WallTimeout) isTerminationReason_Reason() {}
+
+func (*TerminationReason_CpuLimit) isTerminationReason_Reason() {}
+
+func (*TerminationReason_MemoryLimit) isTerminationReason_Reason() {}
+
+func (*TerminationReason_OomKilled) isTerminationReason_Reason() {}
+
+func (*TerminationReason_SeccompViolation) isTerminationReason_Reason() {}
+
+type ExecutionMetrics struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WallTime      *durationpb.Duration   `protobuf:"bytes,1,opt,name=wall_time,json=wallTime,proto3" json:"wall_time,omitempty"`
+	CpuTime       *durationpb.Duration   `protobuf:"bytes,2,opt,name=cpu_time,json=cpuTime,proto3" json:"cpu_time,omitempty"`
+	MaxRssBytes   uint64                 `protobuf:"varint,3,opt,name=max_rss_bytes,json=maxRssBytes,proto3" json:"max_rss_bytes,omitempty"`
+	PeakPids      uint64                 `protobuf:"varint,4,opt,name=peak_pids,json=peakPids,proto3" json:"peak_pids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionMetrics) Reset() {
+	*x = ExecutionMetrics{}
+	mi := &file_execution_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionMetrics) ProtoMessage() {}
+
+func (x *ExecutionMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_execution_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionMetrics.ProtoReflect.Descriptor instead.
+func (*ExecutionMetrics) Descriptor() ([]byte, []int) {
+	return file_execution_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ExecutionMetrics) GetWallTime() *durationpb.Duration {
+	if x != nil {
+		return x.WallTime
+	}
+	return nil
+}
+
+func (x *ExecutionMetrics) GetCpuTime() *durationpb.Duration {
+	if x != nil {
+		return x.CpuTime
+	}
+	return nil
+}
+
+func (x *ExecutionMetrics) GetMaxRssBytes() uint64 {
+	if x != nil {
+		return x.MaxRssBytes
+	}
+	return 0
+}
+
+func (x *ExecutionMetrics) GetPeakPids() uint64 {
+	if x != nil {
+		return x.PeakPids
 	}
 	return 0
 }
@@ -268,7 +646,7 @@ var File_execution_proto protoreflect.FileDescriptor
 
 const file_execution_proto_rawDesc = "" +
 	"\n" +
-	"\x0fexecution.proto\x12\fexecution.v1\"r\n" +
+	"\x0fexecution.proto\x12\fexecution.v1\x1a\x1egoogle/protobuf/duration.proto\"r\n" +
 	"\x0eExecuteRequest\x12\x1a\n" +
 	"\blanguage\x18\x01 \x01(\tR\blanguage\x12.\n" +
 	"\x05files\x18\x02 \x03(\v2\x18.execution.v1.SourceFileR\x05files\x12\x14\n" +
@@ -276,23 +654,45 @@ const file_execution_proto_rawDesc = "" +
 	"\n" +
 	"SourceFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1a\n" +
-	"\bcontents\x18\x02 \x01(\fR\bcontents\"\xb8\x01\n" +
-	"\x0fExecuteResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
-	"\x06status\x18\x02 \x01(\x0e2\x1d.execution.v1.ExecutionStatusR\x06status\x12\x16\n" +
-	"\x06stdout\x18\x03 \x01(\fR\x06stdout\x12\x16\n" +
-	"\x06stderr\x18\x04 \x01(\fR\x06stderr\x12 \n" +
-	"\texit_code\x18\x05 \x01(\x05H\x00R\bexitCode\x88\x01\x01B\f\n" +
+	"\bcontents\x18\x02 \x01(\fR\bcontents\"\xdc\x01\n" +
+	"\x0eExecutionEvent\x12:\n" +
+	"\x04type\x18\x01 \x01(\x0e2&.execution.v1.ExecutionEvent.EventTypeR\x04type\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12:\n" +
+	"\ffinal_result\x18\x03 \x01(\v2\x17.execution.v1.JobResultR\vfinalResult\">\n" +
+	"\tEventType\x12\v\n" +
+	"\aSTARTED\x10\x00\x12\n" +
 	"\n" +
-	"_exit_code*\x89\x01\n" +
-	"\x0fExecutionStatus\x12 \n" +
-	"\x1cEXECUTION_STATUS_UNSPECIFIED\x10\x00\x12\v\n" +
-	"\aSUCCESS\x10\x01\x12\x11\n" +
-	"\rRUNTIME_ERROR\x10\x02\x12\x17\n" +
-	"\x13TIME_LIMIT_EXCEEDED\x10\x03\x12\x1b\n" +
-	"\x17RESOURCE_LIMIT_EXCEEDED\x10\x042Z\n" +
-	"\x10ExecutionService\x12F\n" +
-	"\aExecute\x12\x1c.execution.v1.ExecuteRequest\x1a\x1d.execution.v1.ExecuteResponseB'Z%runtime-platform/api/gen/execution/v1b\x06proto3"
+	"\x06STDOUT\x10\x01\x12\n" +
+	"\n" +
+	"\x06STDERR\x10\x02\x12\f\n" +
+	"\bFINISHED\x10\x03\"R\n" +
+	"\tJobResult\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
+	"\x06report\x18\x02 \x01(\v2\x1d.execution.v1.ExecutionReportR\x06report\"\xbc\x01\n" +
+	"\x0fExecutionReport\x12,\n" +
+	"\x06output\x18\x01 \x01(\v2\x14.execution.v1.OutputR\x06output\x12A\n" +
+	"\vtermination\x18\x02 \x01(\v2\x1f.execution.v1.TerminationReasonR\vtermination\x128\n" +
+	"\ametrics\x18\x03 \x01(\v2\x1e.execution.v1.ExecutionMetricsR\ametrics\"8\n" +
+	"\x06Output\x12\x16\n" +
+	"\x06stdout\x18\x01 \x01(\fR\x06stdout\x12\x16\n" +
+	"\x06stderr\x18\x02 \x01(\fR\x06stderr\"\x8f\x02\n" +
+	"\x11TerminationReason\x12\x1d\n" +
+	"\texit_code\x18\x01 \x01(\x05H\x00R\bexitCode\x12\x18\n" +
+	"\x06signal\x18\x02 \x01(\x05H\x00R\x06signal\x12#\n" +
+	"\fwall_timeout\x18\x03 \x01(\bH\x00R\vwallTimeout\x12\x1d\n" +
+	"\tcpu_limit\x18\x04 \x01(\bH\x00R\bcpuLimit\x12#\n" +
+	"\fmemory_limit\x18\x05 \x01(\bH\x00R\vmemoryLimit\x12\x1f\n" +
+	"\n" +
+	"oom_killed\x18\x06 \x01(\bH\x00R\toomKilled\x12-\n" +
+	"\x11seccomp_violation\x18\a \x01(\bH\x00R\x10seccompViolationB\b\n" +
+	"\x06reason\"\xc1\x01\n" +
+	"\x10ExecutionMetrics\x126\n" +
+	"\twall_time\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\bwallTime\x124\n" +
+	"\bcpu_time\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\acpuTime\x12\"\n" +
+	"\rmax_rss_bytes\x18\x03 \x01(\x04R\vmaxRssBytes\x12\x1b\n" +
+	"\tpeak_pids\x18\x04 \x01(\x04R\bpeakPids2[\n" +
+	"\x10ExecutionService\x12G\n" +
+	"\aExecute\x12\x1c.execution.v1.ExecuteRequest\x1a\x1c.execution.v1.ExecutionEvent0\x01B'Z%runtime-platform/api/gen/execution/v1b\x06proto3"
 
 var (
 	file_execution_proto_rawDescOnce sync.Once
@@ -307,23 +707,36 @@ func file_execution_proto_rawDescGZIP() []byte {
 }
 
 var file_execution_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_execution_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_execution_proto_goTypes = []any{
-	(ExecutionStatus)(0),    // 0: execution.v1.ExecutionStatus
-	(*ExecuteRequest)(nil),  // 1: execution.v1.ExecuteRequest
-	(*SourceFile)(nil),      // 2: execution.v1.SourceFile
-	(*ExecuteResponse)(nil), // 3: execution.v1.ExecuteResponse
+	(ExecutionEvent_EventType)(0), // 0: execution.v1.ExecutionEvent.EventType
+	(*ExecuteRequest)(nil),        // 1: execution.v1.ExecuteRequest
+	(*SourceFile)(nil),            // 2: execution.v1.SourceFile
+	(*ExecutionEvent)(nil),        // 3: execution.v1.ExecutionEvent
+	(*JobResult)(nil),             // 4: execution.v1.JobResult
+	(*ExecutionReport)(nil),       // 5: execution.v1.ExecutionReport
+	(*Output)(nil),                // 6: execution.v1.Output
+	(*TerminationReason)(nil),     // 7: execution.v1.TerminationReason
+	(*ExecutionMetrics)(nil),      // 8: execution.v1.ExecutionMetrics
+	(*durationpb.Duration)(nil),   // 9: google.protobuf.Duration
 }
 var file_execution_proto_depIdxs = []int32{
-	2, // 0: execution.v1.ExecuteRequest.files:type_name -> execution.v1.SourceFile
-	0, // 1: execution.v1.ExecuteResponse.status:type_name -> execution.v1.ExecutionStatus
-	1, // 2: execution.v1.ExecutionService.Execute:input_type -> execution.v1.ExecuteRequest
-	3, // 3: execution.v1.ExecutionService.Execute:output_type -> execution.v1.ExecuteResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2,  // 0: execution.v1.ExecuteRequest.files:type_name -> execution.v1.SourceFile
+	0,  // 1: execution.v1.ExecutionEvent.type:type_name -> execution.v1.ExecutionEvent.EventType
+	4,  // 2: execution.v1.ExecutionEvent.final_result:type_name -> execution.v1.JobResult
+	5,  // 3: execution.v1.JobResult.report:type_name -> execution.v1.ExecutionReport
+	6,  // 4: execution.v1.ExecutionReport.output:type_name -> execution.v1.Output
+	7,  // 5: execution.v1.ExecutionReport.termination:type_name -> execution.v1.TerminationReason
+	8,  // 6: execution.v1.ExecutionReport.metrics:type_name -> execution.v1.ExecutionMetrics
+	9,  // 7: execution.v1.ExecutionMetrics.wall_time:type_name -> google.protobuf.Duration
+	9,  // 8: execution.v1.ExecutionMetrics.cpu_time:type_name -> google.protobuf.Duration
+	1,  // 9: execution.v1.ExecutionService.Execute:input_type -> execution.v1.ExecuteRequest
+	3,  // 10: execution.v1.ExecutionService.Execute:output_type -> execution.v1.ExecutionEvent
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_execution_proto_init() }
@@ -331,14 +744,22 @@ func file_execution_proto_init() {
 	if File_execution_proto != nil {
 		return
 	}
-	file_execution_proto_msgTypes[2].OneofWrappers = []any{}
+	file_execution_proto_msgTypes[6].OneofWrappers = []any{
+		(*TerminationReason_ExitCode)(nil),
+		(*TerminationReason_Signal)(nil),
+		(*TerminationReason_WallTimeout)(nil),
+		(*TerminationReason_CpuLimit)(nil),
+		(*TerminationReason_MemoryLimit)(nil),
+		(*TerminationReason_OomKilled)(nil),
+		(*TerminationReason_SeccompViolation)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_execution_proto_rawDesc), len(file_execution_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

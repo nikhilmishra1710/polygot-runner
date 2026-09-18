@@ -1,4 +1,8 @@
-use std::sync::mpsc::{Sender, SyncSender};
+use std::sync::{
+    Arc,
+    atomic::AtomicBool,
+    mpsc::{Sender, SyncSender},
+};
 
 use tracing::{error, info};
 
@@ -49,6 +53,7 @@ impl ExecutionEngine {
         &self,
         request: &ExecutionRequest,
         events: SyncSender<ExecutionEvent>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<ExecutionReport, WorkerError> {
         let workspace = self.workspace_manager.create(request)?;
 
@@ -57,17 +62,21 @@ impl ExecutionEngine {
         let plan = runtime.prepare(request, &workspace).unwrap();
 
         if let Some(complie) = plan.compile {
-            let result = self
-                .process_runner
-                .run_with_events(complie, events.clone())?;
+            let result = self.process_runner.run_with_events(
+                complie,
+                events.clone(),
+                Arc::clone(&cancel_flag),
+            )?;
             if !result.termination.is_success() {
                 error!("Some error occured");
                 return Ok(result);
             }
             info!("compilation completed!!");
         }
-        let result = self.process_runner.run_with_events(plan.execute, events)?;
-
+        let result = self
+            .process_runner
+            .run_with_events(plan.execute, events, cancel_flag)?;
+        info!("Run completed!!");
         Ok(result)
     }
 }

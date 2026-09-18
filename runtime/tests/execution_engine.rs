@@ -1,5 +1,8 @@
 mod common;
-use std::time::Duration;
+use std::{
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
+};
 
 use runtime_worker::{
     engine::ExecutionEngine,
@@ -87,9 +90,10 @@ print("world")
     let (tx, rx) = std::sync::mpsc::sync_channel(128);
 
     let worker = Worker::new();
-
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    let cancel_clone = Arc::clone(&cancel_flag);
     let result = worker
-        .execute_with_events(job, tx)
+        .execute_with_events(job, tx, cancel_clone)
         .expect("execution failed");
 
     let events: Vec<ExecutionEvent> = rx.iter().collect();

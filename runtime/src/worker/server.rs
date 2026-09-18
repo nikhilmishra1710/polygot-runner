@@ -2,7 +2,7 @@ use std::{
     io,
     os::unix::net::{UnixListener, UnixStream},
     path::Path,
-    sync::mpsc,
+    sync::{Arc, atomic::AtomicBool, mpsc},
     thread,
 };
 
@@ -93,12 +93,13 @@ impl WorkerServer {
 
                     // Create the channel INSIDE the loop so each job gets a fresh event stream
                     let (event_tx, event_rx) = mpsc::sync_channel::<ExecutionEvent>(128);
-
+                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                    let cancel_clone = Arc::clone(&cancel_flag);
                     // Use thread::scope so we can safely borrow `self` in the background thread
                     let response = thread::scope(|s| {
                         // 1. Spawn the worker execution in a scoped background thread
-                        let worker_handle =
-                            s.spawn(|| match self.worker.execute_with_events(job, event_tx) {
+                        let worker_handle = s.spawn(|| {
+                            match self.worker.execute_with_events(job, event_tx, cancel_flag) {
                                 Ok(result) => {
                                     debug!("Job executed successfully");
                                     WorkerResponse::Result(result)
@@ -107,7 +108,8 @@ impl WorkerServer {
                                     error!("Job execution failed: {}", error);
                                     WorkerResponse::Error(error.to_string())
                                 }
-                            });
+                            }
+                        });
 
                         // 2. Actively drain the event channel on the main thread!
                         // This prevents the sync_channel from filling up and deadlocking the worker.

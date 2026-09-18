@@ -2,61 +2,44 @@ package main
 
 import (
 	"log"
-	"net"
+	"net/http"
 	"os"
 	"os/signal"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	pb "runtime-platform/api/gen/execution/v1"
-
 	"runtime-platform/api/internal/api"
-	"runtime-platform/api/internal/worker"
 )
 
-func workerSocketPath() string {
-	if p := os.Getenv("WORKER_SOCKET_PATH"); p != "" {
-		return p
-	}
-	return "/tmp/runtime-worker.sock"
-}
-
 func main() {
-	// Create worker client
-	workerClient, err := worker.NewUnixClient(workerSocketPath())
+	// 1. Connect to the Rust gRPC Worker
+	conn, err := grpc.Dial("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Failed to create worker client: %v", err)
+		log.Fatalf("Failed to connect to Rust worker: %v", err)
 	}
-	defer workerClient.Close()
+	defer conn.Close()
 
-	// Create API server
-	apiServer := api.NewServer(workerClient)
+	// Automatically generated gRPC client!
+	workerClient := pb.NewExecutionServiceClient(conn)
+	handler := api.NewHandler(workerClient)
 
-	// Create gRPC server and register the ExecutionService
-	grpcServer := grpc.NewServer()
-	pb.RegisterExecutionServiceServer(grpcServer, apiServer)
+	// 2. Setup Frontend Routes
+	// 2. Setup Frontend Routes
+	http.HandleFunc("/ws/v1/execute", handler.StreamHandler) // Live WebSocket
+	http.HandleFunc("/v1/execute", handler.SyncHandler)      // Standard REST POST
 
-	// Listen on TCP port 8080
-	lis, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-
-	// Start server in goroutine
+	// 3. Start the Server
 	go func() {
-		log.Println("Starting gRPC API server on :8080")
-		if err := grpcServer.Serve(lis); err != nil {
+		log.Println("Starting UI Gateway on :8080")
+		if err := http.ListenAndServe(":8080", nil); err != nil {
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 	<-quit
-	log.Println("Shutting down server...")
-
-	grpcServer.GracefulStop()
-
-	log.Println("Server exited")
+	log.Println("Server exited cleanly")
 }

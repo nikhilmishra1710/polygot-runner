@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExecutionServiceClient interface {
-	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error)
+	Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecutionEvent], error)
 }
 
 type executionServiceClient struct {
@@ -37,21 +37,30 @@ func NewExecutionServiceClient(cc grpc.ClientConnInterface) ExecutionServiceClie
 	return &executionServiceClient{cc}
 }
 
-func (c *executionServiceClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (*ExecuteResponse, error) {
+func (c *executionServiceClient) Execute(ctx context.Context, in *ExecuteRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExecutionEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ExecuteResponse)
-	err := c.cc.Invoke(ctx, ExecutionService_Execute_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ExecutionService_ServiceDesc.Streams[0], ExecutionService_Execute_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[ExecuteRequest, ExecutionEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutionService_ExecuteClient = grpc.ServerStreamingClient[ExecutionEvent]
 
 // ExecutionServiceServer is the server API for ExecutionService service.
 // All implementations must embed UnimplementedExecutionServiceServer
 // for forward compatibility.
 type ExecutionServiceServer interface {
-	Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error)
+	Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecutionEvent]) error
 	mustEmbedUnimplementedExecutionServiceServer()
 }
 
@@ -62,8 +71,8 @@ type ExecutionServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedExecutionServiceServer struct{}
 
-func (UnimplementedExecutionServiceServer) Execute(context.Context, *ExecuteRequest) (*ExecuteResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Execute not implemented")
+func (UnimplementedExecutionServiceServer) Execute(*ExecuteRequest, grpc.ServerStreamingServer[ExecutionEvent]) error {
+	return status.Error(codes.Unimplemented, "method Execute not implemented")
 }
 func (UnimplementedExecutionServiceServer) mustEmbedUnimplementedExecutionServiceServer() {}
 func (UnimplementedExecutionServiceServer) testEmbeddedByValue()                          {}
@@ -86,23 +95,16 @@ func RegisterExecutionServiceServer(s grpc.ServiceRegistrar, srv ExecutionServic
 	s.RegisterService(&ExecutionService_ServiceDesc, srv)
 }
 
-func _ExecutionService_Execute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExecuteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _ExecutionService_Execute_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ExecuteRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(ExecutionServiceServer).Execute(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: ExecutionService_Execute_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExecutionServiceServer).Execute(ctx, req.(*ExecuteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(ExecutionServiceServer).Execute(m, &grpc.GenericServerStream[ExecuteRequest, ExecutionEvent]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ExecutionService_ExecuteServer = grpc.ServerStreamingServer[ExecutionEvent]
 
 // ExecutionService_ServiceDesc is the grpc.ServiceDesc for ExecutionService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -110,12 +112,13 @@ func _ExecutionService_Execute_Handler(srv interface{}, ctx context.Context, dec
 var ExecutionService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "execution.v1.ExecutionService",
 	HandlerType: (*ExecutionServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
 		{
-			MethodName: "Execute",
-			Handler:    _ExecutionService_Execute_Handler,
+			StreamName:    "Execute",
+			Handler:       _ExecutionService_Execute_Handler,
+			ServerStreams: true,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
 	Metadata: "execution.proto",
 }

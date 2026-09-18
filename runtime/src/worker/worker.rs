@@ -1,4 +1,8 @@
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::{
+    Arc,
+    atomic::AtomicBool,
+    mpsc::{self, Receiver, Sender, SyncSender},
+};
 
 use crate::{
     engine::ExecutionEngine,
@@ -34,17 +38,18 @@ impl Worker {
         &self,
         job: ExecutionJob,
         events: SyncSender<ExecutionEvent>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<JobResult, WorkerError> {
         let id = job.id.clone();
-        info!("Executing job with id: {:?}", id);
+        info!("Executing job with events ID: {:?}", id);
         let report = self
             .engine
-            .execute_with_events(&job.request, events.clone())?;
+            .execute_with_events(&job.request, events.clone(), cancel_flag)?;
         let job_result = JobResult { id, report };
         let _ = events.send(ExecutionEvent::Finished {
             result: job_result.clone(),
         });
-        debug!("Job executed successfully");
+        info!("Job executed successfully");
         Ok(job_result)
     }
 

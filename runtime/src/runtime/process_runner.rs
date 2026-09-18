@@ -10,7 +10,11 @@ use crate::{
 use std::{
     io::Read,
     os::unix::process::ExitStatusExt,
-    sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, RecvTimeoutError, Sender, SyncSender},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -149,6 +153,7 @@ impl NativeProcessRunner {
         &self,
         command: RuntimeCommand,
         event_tx: SyncSender<ExecutionEvent>,
+        cancel_flag: Arc<AtomicBool>,
     ) -> Result<ExecutionReport, WorkerError> {
         let launcher = ProcessLauncher::new(ForkBackend);
 
@@ -214,10 +219,20 @@ impl NativeProcessRunner {
 
         let start_time = Instant::now();
         let mut wall_timeout_occurred = false;
+        let mut client_cancelled = false;
 
         let exit_status = loop {
             if let Some(status) = process.try_wait()? {
                 break status;
+            }
+
+            if cancel_flag.load(Ordering::Relaxed) {
+                warn!("Client disconnected; forcefully killing process group");
+                client_cancelled = true;
+                let _ = kill_process_group_id(process.pid() as u32);
+
+                // Block briefly for the kernel to reap the killed process
+                break process.wait()?;
             }
 
             if start_time.elapsed() >= command.limits.wall_time {
@@ -260,7 +275,9 @@ impl NativeProcessRunner {
         let is_oom = is_cgroup_oom(&cgroup.path());
 
         // Step 1: Classify termination reason
-        let termination = if wall_timeout_occurred {
+        let termination = if client_cancelled {
+            TerminationReason::Signal(libc::SIGKILL)
+        } else if wall_timeout_occurred {
             TerminationReason::WallTimeout
         } else if is_oom {
             TerminationReason::OomKilled

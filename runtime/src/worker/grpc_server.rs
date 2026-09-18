@@ -1,5 +1,6 @@
 // src/worker/grpc_server.rs
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -12,6 +13,7 @@ pub mod pb {
 
 use pb::execution_service_server::ExecutionService;
 use pb::{ExecuteRequest, ExecutionEvent, execution_event::EventType};
+use tracing::info;
 
 use crate::model::TerminationReason as InternalTermination;
 use pb::termination_reason::Reason as ProtoReason;
@@ -62,15 +64,20 @@ impl ExecutionService for GrpcWorkerServer {
         // We clone the worker so we can move it into the blocking thread
         let worker = Arc::clone(&self.worker);
 
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let cancel_clone = Arc::clone(&cancel_flag);
+
         // Spawn a blocking thread to run the execution engine
         tokio::task::spawn_blocking(move || {
-            let _ = worker.execute_with_events(job, sync_tx.clone());
+            let _ = worker.execute_with_events(job, sync_tx.clone(), cancel_clone);
             // When this function finishes, sync_tx is dropped,
             // which cleanly ends the bridging loop below.
         });
 
+        let grpc_tx_fwd = grpc_tx.clone();
+        let cancel_fwd = Arc::clone(&cancel_flag);
         // Spawn an async task to forward events to the gRPC stream
-        tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
             // Read from the sync engine
             for event in sync_rx {
                 let proto_event = match event {
@@ -98,11 +105,14 @@ impl ExecutionService for GrpcWorkerServer {
                 };
 
                 // Send to the gRPC stream
-                if grpc_tx.send(Ok(proto_event)).await.is_err() {
-                    break; // Client disconnected
+                if grpc_tx_fwd.blocking_send(Ok(proto_event)).is_err() {
+                    cancel_fwd.store(true, Ordering::SeqCst);
+                    break;
                 }
             }
         });
+
+        info!("Returned RPC streamer");
 
         Ok(Response::new(ReceiverStream::new(grpc_rx)))
     }
