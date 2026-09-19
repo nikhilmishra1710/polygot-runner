@@ -67,16 +67,27 @@ impl ExecutionService for GrpcWorkerServer {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_clone = Arc::clone(&cancel_flag);
 
-        // Spawn a blocking thread to run the execution engine
+        // 1. Asynchronously monitor the gRPC client connection
+        let monitor_cancel = Arc::clone(&cancel_flag);
+        let monitor_tx = grpc_tx.clone();
+
+        // CAPTURE THE HANDLE
+        let monitor_handle = tokio::spawn(async move {
+            monitor_tx.closed().await;
+            monitor_cancel.store(true, Ordering::Relaxed);
+        });
+
+        // 2. Spawn a blocking thread to run the execution engine
         tokio::task::spawn_blocking(move || {
-            let _ = worker.execute_with_events(job, sync_tx.clone(), cancel_clone);
+            let _ = worker.execute_with_events(job, sync_tx, cancel_clone);
             // When this function finishes, sync_tx is dropped,
             // which cleanly ends the bridging loop below.
         });
 
         let grpc_tx_fwd = grpc_tx.clone();
         let cancel_fwd = Arc::clone(&cancel_flag);
-        // Spawn an async task to forward events to the gRPC stream
+
+        // 3. Spawn an async task to forward events to the gRPC stream
         tokio::task::spawn_blocking(move || {
             // Read from the sync engine
             for event in sync_rx {
@@ -96,12 +107,11 @@ impl ExecutionService for GrpcWorkerServer {
                         data,
                         final_result: None,
                     },
-
                     InternalEvent::Finished { result } => ExecutionEvent {
                         r#type: EventType::Finished.into(),
                         data: vec![],
                         final_result: Some(map_job_result_to_proto(result)),
-                    }, // Note: If you added a Finished variant to your InternalEvent, map it here!
+                    },
                 };
 
                 // Send to the gRPC stream
@@ -110,7 +120,15 @@ impl ExecutionService for GrpcWorkerServer {
                     break;
                 }
             }
+
+            // THE FIX: The job is finished! Abort the monitor task so it drops its channel clone.
+            // This allows the gRPC stream to gracefully close and send EOF to the Go client.
+            monitor_handle.abort();
         });
+
+        // CRITICAL: Explicitly drop the original grpc_tx so ONLY the forwarding loop
+        // and monitor hold senders.
+        drop(grpc_tx);
 
         info!("Returned RPC streamer");
 

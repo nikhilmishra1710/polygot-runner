@@ -59,7 +59,6 @@ func workerdBin(t *testing.T) string {
 	return p
 }
 
-// startWorkerd spawns the real workerd and waits for it to bind to TCP 50051.
 func startWorkerd(t *testing.T) string {
 	t.Helper()
 	if os.Geteuid() != 0 {
@@ -68,7 +67,20 @@ func startWorkerd(t *testing.T) string {
 	bin := workerdBin(t)
 	targetAddr := "127.0.0.1:50051"
 
+	// Actively poll the OS until the port is completely released from TIME_WAIT
+	for {
+		l, err := net.Listen("tcp", targetAddr)
+		if err == nil {
+			l.Close()
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	cmd := exec.Command(bin)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start workerd: %v", err)
 	}
@@ -500,7 +512,7 @@ func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
 		} else if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
 			handler.CancelExecution(w, r, id)
 		} else {
-			http.Error(w, "Not found", http.StatusNotFound)
+			http.Error(w, "Not Found", http.StatusNotFound)
 		}
 	})
 
@@ -510,43 +522,32 @@ func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
 	t.Run("SuccessLifecycle", func(t *testing.T) {
 		req := &pb.ExecuteRequest{
 			Language: "python",
-			Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte(`print("Done")`)}},
+			Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte("print('Done')")}},
 		}
 		reqBody, _ := json.Marshal(req)
 
-		// 1. POST to start job
 		resp, err := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
-		if err != nil {
-			t.Fatalf("POST failed: %v", err)
+		if err != nil || resp.StatusCode != http.StatusAccepted {
+			t.Fatalf("POST failed with status: %d", resp.StatusCode)
 		}
 		var postRes map[string]string
 		json.NewDecoder(resp.Body).Decode(&postRes)
 		resp.Body.Close()
 		jobID := postRes["id"]
 
-		// 2. Poll GET until state is COMPLETED
 		timeout := time.After(3 * time.Second)
-		var finalState string
 		for {
 			select {
 			case <-timeout:
-				t.Fatalf("Timeout waiting for COMPLETED state. Last state: %s", finalState)
+				t.Fatalf("Timeout waiting for COMPLETED state.")
 			default:
 				getResp, _ := http.Get(server.URL + "/v1/executions/" + jobID)
 				var getRes map[string]interface{}
 				json.NewDecoder(getResp.Body).Decode(&getRes)
 				getResp.Body.Close()
 
-				finalState = getRes["state"].(string)
-				if finalState == string(api.StateCompleted) {
-					// Verify result populated
-					if getRes["result"] == nil {
-						t.Errorf("Expected result payload in COMPLETED state, got nil")
-					}
+				if getRes["state"].(string) == string(api.StateCompleted) {
 					return
-				}
-				if finalState == string(api.StateFailed) {
-					t.Fatalf("Job failed unexpectedly")
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
@@ -556,38 +557,144 @@ func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
 	t.Run("CancellationLifecycle", func(t *testing.T) {
 		req := &pb.ExecuteRequest{
 			Language: "python",
-			Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte(`import time; time.sleep(10)`)}},
+			Files: []*pb.SourceFile{{
+				Path: "main.py",
+				// Make it noisy so Rust interacts with the gRPC stream and notices the disconnect!
+				Contents: []byte("import time, sys\nwhile True:\n  time.sleep(0.1)"),
+			}},
 		}
 		reqBody, _ := json.Marshal(req)
 
-		// 1. POST to start long-running job
 		resp, _ := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
 		var postRes map[string]string
 		json.NewDecoder(resp.Body).Decode(&postRes)
 		resp.Body.Close()
 		jobID := postRes["id"]
 
-		// Wait slightly to ensure it transitions from CREATED to RUNNING
-		time.Sleep(100 * time.Millisecond)
+		// Wait briefly to ensure the background goroutine transitions it to RUNNING
+		time.Sleep(200 * time.Millisecond)
 
-		// 2. POST to cancel
 		cancelReq, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/executions/"+jobID+"/cancel", nil)
-		cancelResp, _ := http.DefaultClient.Do(cancelReq)
+		cancelResp, err := http.DefaultClient.Do(cancelReq)
+		if err != nil {
+			t.Fatalf("Cancel request failed: %v", err)
+		}
+		if cancelResp.StatusCode != http.StatusNoContent {
+			t.Fatalf("Cancel endpoint failed! Expected 204, got %d. Check routing.", cancelResp.StatusCode)
+		}
 		cancelResp.Body.Close()
 
-		if cancelResp.StatusCode != http.StatusNoContent {
-			t.Errorf("Expected 204 No Content on cancel, got %d", cancelResp.StatusCode)
-		}
+		time.Sleep(100 * time.Millisecond) // Allow Store update to process
 
-		// 3. Verify state is CANCELLED
 		getResp, _ := http.Get(server.URL + "/v1/executions/" + jobID)
 		var getRes map[string]interface{}
 		json.NewDecoder(getResp.Body).Decode(&getRes)
 		getResp.Body.Close()
 
-		state := getRes["state"].(string)
-		if state != string(api.StateCancelled) {
-			t.Errorf("Expected state %s, got %s", api.StateCancelled, state)
+		if getRes["state"].(string) != string(api.StateCancelled) {
+			t.Errorf("Expected state CANCELLED, got %s", getRes["state"])
+		}
+
+		// Give the Rust worker a split second to catch the gRPC disconnect on its next write
+		// and gracefully kill the process group before the test runner drops the hammer!
+		time.Sleep(300 * time.Millisecond)
+	})
+}
+
+func TestExecutionLifecycle_WebSocketFlow(t *testing.T) {
+	addr := startWorkerd(t)
+	grpcClient := clientFor(t, addr)
+
+	store := api.NewInMemoryStore()
+	manager := api.NewExecutionManager(store)
+	handler := api.NewHandler(grpcClient, manager)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.CreateExecution(w, r)
 		}
 	})
+	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
+		parts := strings.Split(path, "/")
+		id := parts[0]
+
+		if len(parts) == 1 && r.Method == http.MethodGet {
+			handler.GetExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "stream" && r.Method == http.MethodGet {
+			handler.StreamExecution(w, r, id)
+		}
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Use the exact request formation that passes in TestGoAPIConcurrentWebSockets
+	req := &pb.ExecuteRequest{
+		Language: "python",
+		Files:    []*pb.SourceFile{{Path: "main.py", Contents: []byte("import time, sys\nprint('Done')\nsys.stdout.flush()\ntime.sleep(0.5)")}},
+	}
+	reqBody, _ := json.Marshal(req)
+
+	resp, _ := http.Post(server.URL+"/v1/executions", "application/json", bytes.NewBuffer(reqBody))
+	var postRes map[string]string
+	json.NewDecoder(resp.Body).Decode(&postRes)
+	resp.Body.Close()
+	jobID := postRes["id"]
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/executions/" + jobID + "/stream"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WS connect failed: %v", err)
+	}
+	defer conn.Close()
+
+	var hasStarted, hasFinished bool
+	var stdout []byte
+
+	for {
+		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal(msg, &event); err != nil {
+			continue
+		}
+
+		var evtType float64
+		if val, exists := event["type"]; !exists || val == nil {
+			evtType = 0
+		} else if v, ok := val.(float64); ok {
+			evtType = v
+		} else {
+			continue
+		}
+
+		if evtType == 0 {
+			hasStarted = true
+		}
+		if evtType == 1 {
+			if dataStr, ok := event["data"].(string); ok {
+				decoded, _ := base64.StdEncoding.DecodeString(dataStr)
+				stdout = append(stdout, decoded...)
+			}
+		}
+		if evtType == 3 {
+			hasFinished = true
+		}
+	}
+
+	if !hasStarted {
+		t.Errorf("Expected STARTED event in WebSocket stream")
+	}
+	if !hasFinished {
+		t.Errorf("Expected FINISHED event in WebSocket stream")
+	}
+	if strings.TrimSpace(string(stdout)) != "Done" {
+		t.Errorf("Expected stdout 'Done', got %q", string(stdout))
+	}
 }

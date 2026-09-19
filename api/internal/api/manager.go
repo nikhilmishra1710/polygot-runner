@@ -12,30 +12,31 @@ import (
 type ExecutionManager struct {
 	Store ExecutionStore
 
-	// Transient state (cannot be stored in DB)
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
-
-	// Live event channels for active WebSockets
-	streams map[string]chan *pb.ExecutionEvent
+	
+	// Fan-out wakeup signals for multiple browser tabs
+	listeners map[string][]chan struct{}
 }
 
 func NewExecutionManager(store ExecutionStore) *ExecutionManager {
 	return &ExecutionManager{
-		Store:   store,
-		cancels: make(map[string]context.CancelFunc),
-		streams: make(map[string]chan *pb.ExecutionEvent),
+		Store:     store,
+		cancels:   make(map[string]context.CancelFunc),
+		listeners: make(map[string][]chan struct{}),
 	}
 }
 
-// Start spawns the execution and saves it to the Store.
+// ... Start() remains exactly the same, but remove the m.streams initialization ...
+
 func (m *ExecutionManager) Start(ctx context.Context, req *pb.ExecuteRequest) (string, context.Context) {
 	id := uuid.New().String()
 	execCtx, cancel := context.WithCancel(ctx)
 
 	m.mu.Lock()
 	m.cancels[id] = cancel
-	m.streams[id] = make(chan *pb.ExecutionEvent, 100)
+	// Initialize the listener array
+	m.listeners[id] = make([]chan struct{}, 0)
 	m.mu.Unlock()
 
 	exec := &Execution{
@@ -49,43 +50,67 @@ func (m *ExecutionManager) Start(ctx context.Context, req *pb.ExecuteRequest) (s
 	return id, execCtx
 }
 
-// RouteEvent saves the event to the Store and broadcasts it to live WebSockets.
+// RouteEvent saves to DB, then wakes up all active WebSockets
 func (m *ExecutionManager) RouteEvent(id string, event *pb.ExecutionEvent) {
 	m.Store.AppendEvent(context.Background(), id, event)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if ch, exists := m.streams[id]; exists {
-		// Non-blocking send
+	
+	// Broadcast a simple "new data available" signal to all listeners
+	for _, ch := range m.listeners[id] {
 		select {
-		case ch <- event:
+		case ch <- struct{}{}:
 		default:
 		}
 	}
 }
 
-func (m *ExecutionManager) Subscribe(id string) chan *pb.ExecutionEvent {
+// Subscribe returns a personal wakeup channel for a single WebSocket
+func (m *ExecutionManager) Subscribe(id string) chan struct{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.streams[id]
+	ch := make(chan struct{}, 1)
+	m.listeners[id] = append(m.listeners[id], ch)
+	return ch
 }
 
-func (m *ExecutionManager) Cancel(id string) {
+// Unsubscribe cleans up the personal channel when the user closes the tab
+func (m *ExecutionManager) Unsubscribe(id string, ch chan struct{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if cancel, exists := m.cancels[id]; exists {
-		cancel()
-		delete(m.cancels, id)
+	
+	listeners := m.listeners[id]
+	for i, listener := range listeners {
+		if listener == ch {
+			// Remove the channel from the slice
+			m.listeners[id] = append(listeners[:i], listeners[i+1:]...)
+			close(ch)
+			break
+		}
 	}
-	m.Store.UpdateState(context.Background(), id, StateCancelled, nil)
 }
 
+// ... Cancel() and Cleanup() remain the same, just clean up listeners instead of streams ...
 func (m *ExecutionManager) Cleanup(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.cancels, id)
-	if ch, exists := m.streams[id]; exists {
-		close(ch)
-		delete(m.streams, id)
+	
+	if listeners, exists := m.listeners[id]; exists {
+		for _, ch := range listeners {
+			close(ch)
+		}
+		delete(m.listeners, id)
+	}
+}
+
+// Cancel safely looks up and triggers the gRPC context cancellation for a specific job
+func (m *ExecutionManager) Cancel(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	if cancel, exists := m.cancels[id]; exists {
+		cancel()
 	}
 }

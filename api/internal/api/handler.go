@@ -33,13 +33,26 @@ func (h *Handler) CreateExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use context.Background() so the job survives after the HTTP request finishes
 	jobID, execCtx := h.manager.Start(context.Background(), &req)
 
 	go func() {
-		defer h.manager.Cleanup(jobID)
+		defer func() {
+			// Wake up any waiting WebSockets one final time before closing
+			h.manager.mu.Lock()
+			for _, ch := range h.manager.listeners[jobID] {
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
+			h.manager.mu.Unlock()
 
+			h.manager.Cleanup(jobID)
+		}()
+
+		// The Store safely ignores this if the job was already CANCELLED
 		h.manager.Store.UpdateState(context.Background(), jobID, StateRunning, nil)
+
 		stream, err := h.workerClient.Execute(execCtx, &req)
 		if err != nil {
 			h.manager.Store.UpdateState(context.Background(), jobID, StateFailed, nil)
@@ -49,14 +62,16 @@ func (h *Handler) CreateExecution(w http.ResponseWriter, r *http.Request) {
 		for {
 			event, err := stream.Recv()
 			if err != nil {
+				// Context canceled or stream broken
+				h.manager.Store.UpdateState(context.Background(), jobID, StateFailed, nil)
 				break
 			}
-
-			h.manager.RouteEvent(jobID, event)
 
 			if event.Type == pb.ExecutionEvent_FINISHED {
 				h.manager.Store.UpdateState(context.Background(), jobID, StateCompleted, event.FinalResult)
 			}
+
+			h.manager.RouteEvent(jobID, event)
 		}
 	}()
 
@@ -90,26 +105,36 @@ func (h *Handler) StreamExecution(w http.ResponseWriter, r *http.Request, id str
 	}
 	defer conn.Close()
 
-	history, _ := h.manager.Store.GetEvents(r.Context(), id)
-	for _, event := range history {
-		if err := conn.WriteJSON(event); err != nil {
+	// Register this specific client connection for wakeups
+	wakeup := h.manager.Subscribe(id)
+	defer h.manager.Unsubscribe(id, wakeup)
+
+	cursor := 0
+
+	for {
+		// 1. Fetch the unified timeline from the store
+		events, err := h.manager.Store.GetEvents(r.Context(), id)
+		if err != nil {
+			conn.WriteJSON(map[string]string{"error": "Execution not found"})
 			return
 		}
-	}
 
-	exec, err := h.manager.Store.Get(r.Context(), id)
-	if err != nil {
-		conn.WriteJSON(map[string]string{"error": "Execution not found"})
-		return
-	}
-
-	if exec.State == StateRunning || exec.State == StateCreated {
-		liveEvents := h.manager.Subscribe(id)
-		for event := range liveEvents {
-			if err := conn.WriteJSON(event); err != nil {
-				break
+		// 2. Play back any events we haven't sent to this client yet
+		for i := cursor; i < len(events); i++ {
+			if err := conn.WriteJSON(events[i]); err != nil {
+				return // Client disconnected
 			}
+			cursor++
 		}
+
+		// 3. Check if the job is finished
+		exec, _ := h.manager.Store.Get(r.Context(), id)
+		if exec.State != StateRunning && exec.State != StateCreated {
+			break // Exit the loop gracefully
+		}
+
+		// 4. Block until the manager signals new data, or the client disconnects
+		<-wakeup
 	}
 
 	conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -117,6 +142,12 @@ func (h *Handler) StreamExecution(w http.ResponseWriter, r *http.Request, id str
 
 // POST /v1/executions/{id}/cancel
 func (h *Handler) CancelExecution(w http.ResponseWriter, r *http.Request, id string) {
+	// 1. Explicitly lock the state as CANCELLED first!
+	// Our strict Store rules will now prevent the dying goroutine from changing this to FAILED.
+	h.manager.Store.UpdateState(context.Background(), id, StateCancelled, nil)
+	
+	// 2. Kill the Rust gRPC process
 	h.manager.Cancel(id)
+	
 	w.WriteHeader(http.StatusNoContent)
 }

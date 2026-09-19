@@ -45,6 +45,12 @@ func (s *InMemoryStore) UpdateState(_ context.Context, id string, state JobState
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if exec, exists := s.executions[id]; exists {
+		// STRICT STATE MACHINE: Terminal states are immutable!
+		// Prevents a lagging goroutine from overwriting a fast cancellation.
+		if exec.State == StateCompleted || exec.State == StateFailed || exec.State == StateCancelled {
+			return nil
+		}
+
 		exec.State = state
 		if result != nil {
 			exec.Result = result
@@ -68,7 +74,6 @@ func (s *InMemoryStore) GetEvents(_ context.Context, id string) ([]*pb.Execution
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if events, exists := s.events[id]; exists {
-		// Return a copy to prevent race conditions
 		dst := make([]*pb.ExecutionEvent, len(events))
 		copy(dst, events)
 		return dst, nil
