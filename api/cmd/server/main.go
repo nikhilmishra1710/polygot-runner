@@ -81,7 +81,21 @@ func main() {
 	})
 
 	log.Printf("Starting Go API Gateway on %s...", apiAddr)
-	if err := http.ListenAndServe(apiAddr, mux); err != nil {
+	if err := http.ListenAndServe(apiAddr, corsMiddleware(mux)); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
