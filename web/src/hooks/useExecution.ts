@@ -9,25 +9,22 @@ import { type ExecutionState, EventType } from "../types/execution";
 import { type Language } from "../types/language";
 
 export function useExecution() {
-  const [output, setOutput] = useState("");
+  const [stdout, setStdout] = useState("");
+  const [stderr, setStderr] = useState("");
   const [status, setStatus] = useState<ExecutionState>("IDLE");
 
   const activeJobId = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const run = async (code: string, language: Language) => {
-    setOutput("");
+    setStdout("");
+    setStderr("");
     setStatus("RUNNING");
 
     try {
       const requestPayload = {
         language: language.id,
-        files: [
-          {
-            path: language.fileName,
-            contents: btoa(code),
-          },
-        ],
+        files: [{ path: language.fileName, contents: btoa(code) }],
       };
 
       const jobId = await createExecution(requestPayload);
@@ -36,12 +33,12 @@ export function useExecution() {
       wsRef.current = connectExecutionStream(
         jobId,
         (msg) => {
-          if (
-            (msg.type === EventType.STDOUT || msg.type === EventType.STDERR) &&
-            msg.data
-          ) {
+          if (msg.type === EventType.STDOUT && msg.data) {
             const data = msg.data;
-            setOutput((prev) => prev + atob(data));
+            setStdout((prev) => prev + atob(data));
+          } else if (msg.type === EventType.STDERR && msg.data) {
+            const data = msg.data;
+            setStderr((prev) => prev + atob(data));
           } else if (msg.type === EventType.FINISHED) {
             setStatus("COMPLETED");
           }
@@ -57,7 +54,7 @@ export function useExecution() {
       );
     } catch (err) {
       console.error(err);
-      setOutput(`System Error: ${err}`);
+      setStderr(`System Error: ${err}`);
       setStatus("FAILED");
     }
   };
@@ -73,10 +70,5 @@ export function useExecution() {
     }
   };
 
-  return {
-    status,
-    output,
-    run,
-    cancel,
-  };
+  return { status, stdout, stderr, run, cancel };
 }

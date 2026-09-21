@@ -14,19 +14,22 @@ test.describe("Polyglot Runtime E2E", () => {
     await expect(page.locator(".monaco-editor")).toContainText(
       starter_boilerplate,
     );
-    // 1. Interact with the real Monaco Editor
+    // 1. Interact with the real Monaco Editor reliably
     await page.locator(".monaco-editor").click();
 
-    // Now that the editor is actively listening, dispatch the keyboard events
-    await page.keyboard.press("ControlOrMeta+a");
+    // Bypass OS-specific "Select All" modifiers using universal cursor highlighting
+    await page.keyboard.press("End");
+    await page.keyboard.press("Shift+Home");
     await page.keyboard.press("Backspace");
+
+    // Insert the new code
     await page.keyboard.insertText(
-      'import sys\nprint("Playwright E2E Success", flush=True)',
+      'import sys\nprint("Hello to stdout")\nprint("Error to stderr", file=sys.stderr)',
     );
 
     // FIX 2: Explicitly wait for Monaco to render the new code BEFORE clicking Run
     await expect(page.locator(".monaco-editor")).toContainText(
-      "Playwright E2E Success",
+      "Hello to stdout",
     );
 
     // 2. Trigger the Execution Pipeline
@@ -37,10 +40,12 @@ test.describe("Polyglot Runtime E2E", () => {
 
     // 3. Wait for the Rust worker to stream the output back
     // We target the specific text inside the OutputPanel
-    const outputText = page.getByText("Playwright E2E Success");
+    const outputText = page.locator("pre", { hasText: "Hello to stdout" });
+    const errorText = page.locator("pre", { hasText: "Error to stderr" });
 
     // Increase timeout to 10s to account for potential cold-start of the Rust sandbox
     await expect(outputText).toBeVisible({ timeout: 10000 });
+    await expect(errorText).toBeVisible({ timeout: 10000 });
 
     // 4. Verify the state machine correctly transitions to COMPLETED on WebSocket close
     await expect(page.getByText("Status: COMPLETED")).toBeVisible();

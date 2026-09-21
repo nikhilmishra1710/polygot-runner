@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "npx playwright test",
+    "test:all": "vitest run && npx playwright test"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

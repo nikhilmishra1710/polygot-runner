@@ -76,7 +76,7 @@ describe("useExecution Hook Flow", () => {
       });
     });
 
-    expect(result.current.output).toBe("Integration Test\n");
+    expect(result.current.stdout).toBe("Integration Test\n");
 
     // 3. Complete the execution
     act(() => {
@@ -133,5 +133,49 @@ describe("useExecution Hook Flow", () => {
     });
 
     expect(result.current.status).toBe("FAILED");
+  });
+
+  it("successfully streams stdout and stderr separately", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "job-123" }),
+    } as Response);
+
+    const { result } = renderHook(() => useExecution());
+
+    await act(async () => {
+      result.current.run("test code", pythonLang);
+    });
+
+    act(() => {
+      mockWsInstance.onmessage({
+        data: JSON.stringify({ type: EventType.STARTED }),
+      });
+
+      // Send stdout
+      mockWsInstance.onmessage({
+        data: JSON.stringify({
+          type: EventType.STDOUT,
+          data: btoa("Hello\nWorld\n"),
+        }),
+      });
+
+      // Send stderr
+      mockWsInstance.onmessage({
+        data: JSON.stringify({
+          type: EventType.STDERR,
+          data: btoa("warning: test"),
+        }),
+      });
+
+      mockWsInstance.onmessage({
+        data: JSON.stringify({ type: EventType.FINISHED }),
+      });
+      mockWsInstance.onclose();
+    });
+
+    expect(result.current.stdout).toBe("Hello\nWorld\n");
+    expect(result.current.stderr).toBe("warning: test");
+    expect(result.current.status).toBe("COMPLETED");
   });
 });
