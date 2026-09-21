@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+const starter_boilerplate = "Hello from runner";
+
 test.describe("Polyglot Runtime E2E", () => {
   test("executes python code and streams output from rust backend", async ({
     page,
@@ -10,7 +12,7 @@ test.describe("Polyglot Runtime E2E", () => {
     // Ensure the IDE loaded
     await expect(page.getByText("Polyglot Runtime")).toBeVisible();
     await expect(page.locator(".monaco-editor")).toContainText(
-      "Hello from Monaco!",
+      starter_boilerplate,
     );
     // 1. Interact with the real Monaco Editor
     await page.locator(".monaco-editor").click();
@@ -47,7 +49,7 @@ test.describe("Polyglot Runtime E2E", () => {
   test("cancels a running execution successfully", async ({ page }) => {
     await page.goto("http://localhost:5173");
     await expect(page.locator(".monaco-editor")).toContainText(
-      "Hello from Monaco!",
+      starter_boilerplate,
     );
     // Click the visible editor container to properly engage Monaco's focus manager
     await page.locator(".monaco-editor").click();

@@ -1,20 +1,31 @@
+// src/components/Editor.tsx
 import MonacoEditor from "@monaco-editor/react";
+import { type Language } from "../types/language";
 
 interface EditorProps {
   code: string;
-  language: string;
-  disabled: boolean;
-  onChange: (value: string | undefined) => void;
-  onLanguageChange: (language: string) => void;
+  onChange: (value: string) => void;
+  languages: Language[];
+  selectedLanguage: Language;
+  onLanguageChange: (language: Language) => void;
+  disabled?: boolean;
 }
 
 export default function Editor({
   code,
-  language,
-  disabled,
   onChange,
+  languages,
+  selectedLanguage,
   onLanguageChange,
+  disabled = false,
 }: EditorProps) {
+  const handleLanguageSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const lang = languages.find((l) => l.id === e.target.value);
+    if (lang) {
+      onLanguageChange(lang);
+    }
+  };
+
   return (
     <div
       style={{
@@ -27,33 +38,33 @@ export default function Editor({
       <div
         style={{
           padding: "0.5rem",
-          backgroundColor: "#f5f5f5",
           borderBottom: "1px solid #ccc",
+          backgroundColor: "#f5f5f5",
         }}
       >
         <select
-          value={language}
-          onChange={(e) => onLanguageChange(e.target.value)}
+          value={selectedLanguage.id}
+          onChange={handleLanguageSelect}
           disabled={disabled}
-          style={{ padding: "0.2rem 0.5rem" }}
+          style={{ padding: "0.25rem", borderRadius: "4px" }}
         >
-          <option value="python">Python</option>
-          <option value="cpp">C++</option>
+          {languages.map((lang) => (
+            <option key={lang.id} value={lang.id}>
+              {lang.name}
+            </option>
+          ))}
         </select>
       </div>
 
       <div style={{ flex: 1 }}>
         <MonacoEditor
-          height="100%"
-          language={language}
-          theme="vs-dark"
+          language={selectedLanguage.monacoLanguage}
           value={code}
-          onChange={onChange}
+          onChange={(value) => onChange(value || "")}
           options={{
-            readOnly: disabled,
             minimap: { enabled: false },
-            scrollBeyondLastLine: false,
             fontSize: 14,
+            readOnly: disabled,
           }}
         />
       </div>

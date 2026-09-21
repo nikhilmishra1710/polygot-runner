@@ -1,25 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import App from "../src/App";
+import { renderHook, act, waitFor } from "@testing-library/react";
+import { useExecution } from "../src/hooks/useExecution";
 import { EventType } from "../src/types/execution";
+import { SUPPORTED_LANGUAGES } from "../src/types/language";
 
-// 1. Mock Monaco Editor for jsdom compatibility
-vi.mock("@monaco-editor/react", () => {
-  return {
-    default: ({ value, onChange, options }: any) => (
-      <textarea
-        data-testid="monaco-mock"
-        value={value}
-        disabled={options?.readOnly}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    ),
-  };
-});
-
-// 2. Mock WebSocket Implementation
+// Mock WebSocket Implementation
 let mockWsInstance: any = null;
 
 class MockWebSocket {
@@ -35,7 +21,9 @@ class MockWebSocket {
   }
 }
 
-describe("Execution Flow", () => {
+describe("useExecution Hook Flow", () => {
+  const pythonLang = SUPPORTED_LANGUAGES.find((l) => l.id === "python")!;
+
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
     vi.stubGlobal("WebSocket", MockWebSocket);
@@ -46,26 +34,21 @@ describe("Execution Flow", () => {
     vi.restoreAllMocks();
   });
 
-  it("executes code and streams output to the UI", async () => {
+  it("successfully executes code and streams stdout to the state", async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ id: "job-123" }),
     } as Response);
 
-    render(<App />);
-    const user = userEvent.setup();
-
-    // 3. Enter Python code using the mocked editor
-    const editor = screen.getByTestId("monaco-mock");
-    await user.clear(editor);
+    const { result } = renderHook(() => useExecution());
     const testCode = 'print("Integration Test")';
-    await user.type(editor, testCode);
 
-    // 4. Click Run
-    const runButton = screen.getByRole("button", { name: /run/i });
-    await user.click(runButton);
+    // 1. Run the execution
+    await act(async () => {
+      result.current.run(testCode, pythonLang);
+    });
 
-    // 5. Verify API was called with Base64 encoded payload
+    // Verify API was called correctly
     expect(fetch).toHaveBeenCalledWith("http://localhost:8080/v1/executions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -75,36 +58,80 @@ describe("Execution Flow", () => {
       }),
     });
 
-    expect(screen.getByText("Status: RUNNING")).toBeDefined();
+    expect(result.current.status).toBe("RUNNING");
+    expect(mockWsInstance.url).toBe(
+      "ws://localhost:8080/v1/executions/job-123/stream",
+    );
 
-    // 6. Verify WebSocket connection
-    await waitFor(() => {
-      expect(mockWsInstance).not.toBeNull();
-      expect(mockWsInstance.url).toBe(
-        "ws://localhost:8080/v1/executions/job-123/stream",
-      );
+    // 2. Stream STDOUT (Wrapped in act to prevent React warnings)
+    act(() => {
+      mockWsInstance.onmessage({
+        data: JSON.stringify({ type: EventType.STARTED }),
+      });
+      mockWsInstance.onmessage({
+        data: JSON.stringify({
+          type: EventType.STDOUT,
+          data: btoa("Integration Test\n"),
+        }),
+      });
     });
 
-    // 7. Simulate WebSocket streaming events
-    mockWsInstance.onmessage({
-      data: JSON.stringify({ type: EventType.STARTED }),
+    expect(result.current.output).toBe("Integration Test\n");
+
+    // 3. Complete the execution
+    act(() => {
+      mockWsInstance.onmessage({
+        data: JSON.stringify({ type: EventType.FINISHED }),
+      });
+      mockWsInstance.onclose();
     });
 
-    const encodedOutput = btoa("Integration Test\n");
-    mockWsInstance.onmessage({
-      data: JSON.stringify({ type: EventType.STDOUT, data: encodedOutput }),
+    expect(result.current.status).toBe("COMPLETED");
+  });
+
+  it("handles cancellation", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "job-cancel-123" }),
+    } as Response);
+
+    const { result } = renderHook(() => useExecution());
+
+    await act(async () => {
+      result.current.run("while True: pass", pythonLang);
     });
 
-    mockWsInstance.onmessage({
-      data: JSON.stringify({ type: EventType.FINISHED }),
-    });
-    mockWsInstance.onclose();
-
-    // 8. Verify Output appears in UI
-    await waitFor(() => {
-      expect(screen.getByText(/Integration Test/)).toBeDefined();
+    // Trigger cancel
+    await act(async () => {
+      await result.current.cancel();
     });
 
-    expect(screen.getByText("Status: COMPLETED")).toBeDefined();
+    // Verify cancellation API was called and state updated
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/executions/job-cancel-123/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.current.status).toBe("CANCELLED");
+    expect(mockWsInstance.close).toHaveBeenCalled();
+  });
+
+  it("handles API/WebSocket failures", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: "job-fail-123" }),
+    } as Response);
+
+    const { result } = renderHook(() => useExecution());
+
+    await act(async () => {
+      result.current.run("print('fail')", pythonLang);
+    });
+
+    // Simulate WebSocket error
+    act(() => {
+      mockWsInstance.onerror(new Error("Connection refused"));
+    });
+
+    expect(result.current.status).toBe("FAILED");
   });
 });

@@ -3,17 +3,21 @@ import type { StreamMessage } from "../types/execution";
 const API_HTTP_BASE = "http://localhost:8080/v1";
 const API_WS_BASE = "ws://localhost:8080/v1";
 
+export interface ExecutionRequest {
+  language: string;
+  files: Array<{
+    path: string;
+    contents: string;
+  }>;
+}
+
 export async function createExecution(
-  code: string,
-  language: string = "python",
+  request: ExecutionRequest,
 ): Promise<string> {
   const response = await fetch(`${API_HTTP_BASE}/executions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      language,
-      files: [{ path: "main.py", contents: btoa(code) }],
-    }),
+    body: JSON.stringify(request),
   });
 
   if (!response.ok) {

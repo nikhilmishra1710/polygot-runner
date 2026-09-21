@@ -1,10 +1,7 @@
-import { useState, useRef } from "react";
-import {
-  createExecution,
-  cancelExecution,
-  connectExecutionStream,
-} from "./api/execution";
-import { type ExecutionState, EventType } from "./types/execution";
+// src/App.tsx
+import { useState } from "react";
+import { useExecution } from "./hooks/useExecution";
+import { type Language, SUPPORTED_LANGUAGES } from "./types/language";
 
 import Editor from "./components/Editor";
 import OutputPanel from "./components/OutputPanel";
@@ -12,62 +9,21 @@ import RunButton from "./components/RunButton";
 import StatusBar from "./components/StatusBar";
 
 export default function App() {
-  const [code, setCode] = useState(
-    'import time\nprint("Hello from Monaco!", flush=True)\ntime.sleep(1)\nprint("Done!")',
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>(
+    SUPPORTED_LANGUAGES[0],
   );
-  const [language, setLanguage] = useState("python");
-  const [output, setOutput] = useState("");
-  const [status, setStatus] = useState<ExecutionState>("IDLE");
+  const [code, setCode] = useState(selectedLanguage.starter_boilerplate);
 
-  const activeJobId = useRef<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  // Consume our new hook
+  const { status, output, run, cancel } = useExecution();
 
-  const handleRun = async () => {
-    setOutput("");
-    setStatus("RUNNING");
-
-    try {
-      const jobId = await createExecution(code, language);
-      activeJobId.current = jobId;
-
-      wsRef.current = connectExecutionStream(
-        jobId,
-        (msg) => {
-          if (
-            (msg.type === EventType.STDOUT || msg.type === EventType.STDERR) &&
-            msg.data
-          ) {
-            const data = msg.data;
-            setOutput((prev) => prev + atob(data));
-          } else if (msg.type === EventType.FINISHED) {
-            setStatus("COMPLETED");
-          }
-        },
-        () =>
-          setStatus((current) =>
-            current === "RUNNING" ? "COMPLETED" : current,
-          ),
-        (err) => {
-          console.error("WebSocket Error:", err);
-          setStatus("FAILED");
-        },
-      );
-    } catch (err) {
-      console.error(err);
-      setOutput(`System Error: ${err}`);
-      setStatus("FAILED");
-    }
+  const updateLanguage = (lang: Language) => {
+    setSelectedLanguage(lang);
+    setCode(lang.starter_boilerplate);
   };
 
-  const handleCancel = async () => {
-    if (!activeJobId.current) return;
-    try {
-      await cancelExecution(activeJobId.current);
-      setStatus("CANCELLED");
-      if (wsRef.current) wsRef.current.close();
-    } catch (err) {
-      console.error("Failed to cancel:", err);
-    }
+  const handleRun = () => {
+    run(code, selectedLanguage);
   };
 
   return (
@@ -91,10 +47,11 @@ export default function App() {
       >
         <Editor
           code={code}
-          language={language}
+          languages={SUPPORTED_LANGUAGES}
+          selectedLanguage={selectedLanguage}
           disabled={status === "RUNNING"}
           onChange={(val) => setCode(val || "")}
-          onLanguageChange={setLanguage}
+          onLanguageChange={updateLanguage}
         />
         <OutputPanel output={output} />
       </div>
@@ -106,7 +63,7 @@ export default function App() {
           alignItems: "center",
         }}
       >
-        <RunButton status={status} onRun={handleRun} onCancel={handleCancel} />
+        <RunButton status={status} onRun={handleRun} onCancel={cancel} />
         <StatusBar status={status} />
       </div>
     </div>
