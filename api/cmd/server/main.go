@@ -35,21 +35,46 @@ func main() {
 	workerClient := pb.NewExecutionServiceClient(conn)
 	store := api.NewInMemoryStore()
 	manager := api.NewExecutionManager(store)
-	handler := api.NewHandler(workerClient, manager)
+	userStore := api.NewInMemoryUserStore()
+	sessionStore := api.NewInMemorySessionStore()
+	handler := api.NewHandler(workerClient, manager, userStore, sessionStore)
+	authMiddleware := api.RequireAuth(sessionStore, userStore)
 
 	mux := http.NewServeMux()
 
-	// Exact match for the base collection path
-	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/v1/verify", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			handler.VerifyCookie(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.HandleFunc("/v1/login", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			handler.CreateExecution(w, r)
+			handler.HandleLogin(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
-	// Sub-path router for /v1/executions/{id}/*
-	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/signup", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.HandleSignup(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.Handle("/v1/executions", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.CreateExecution(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/v1/executions/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
 		parts := strings.Split(path, "/")
 		id := parts[0]
@@ -78,7 +103,7 @@ func main() {
 		}
 
 		http.Error(w, "Not found", http.StatusNotFound)
-	})
+	})))
 
 	log.Printf("Starting Go API Gateway on %s...", apiAddr)
 	if err := http.ListenAndServe(apiAddr, corsMiddleware(mux)); err != nil {
@@ -91,6 +116,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
