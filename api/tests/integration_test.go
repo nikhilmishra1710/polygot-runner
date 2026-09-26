@@ -52,7 +52,7 @@ func workerdBin(t *testing.T) string {
 	if p := os.Getenv("WORKERD_BIN"); p != "" {
 		return p
 	}
-	p := filepath.Join("..", "..", "runtime", "target", "debug", "workerd")
+	p := filepath.Join("..", "runtime", "target", "debug", "workerd")
 	if _, err := os.Stat(p); err != nil {
 		t.Skipf("workerd binary not found at %s (set WORKERD_BIN)", p)
 	}
@@ -368,27 +368,37 @@ func TestGoAPIConcurrentWebSockets(t *testing.T) {
 	addr := startWorkerd(t)
 	grpcClient := clientFor(t, addr)
 
-	// 2. Initialize the new state manager and store
+	// 1. Initialize the new auth stores to satisfy the constructor
 	store := api.NewInMemoryStore()
 	manager := api.NewExecutionManager(store)
-	handler := api.NewHandler(grpcClient, manager)
+	userStore := api.NewInMemoryUserStore()                                 // <-- Added
+	sessionStore := api.NewInMemorySessionStore()                           // <-- Added
+	handler := api.NewHandler(grpcClient, manager, userStore, sessionStore) // <-- Updated
 
-	// 3. Start the Go API layer in a test HTTP server with the new REST routing
 	mux := http.NewServeMux()
 
-	// Bind POST /v1/executions
-	mux.HandleFunc("/v1/executions", handler.CreateExecution)
+	// 2. Wrap all test routes in the mock middleware
+	mux.HandleFunc("/v1/executions", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.CreateExecution(w, r)
+		}
+	}))
 
-	// Bind GET (WS) /v1/executions/{id}/stream
-	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/executions/", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
 		parts := strings.Split(path, "/")
-		if len(parts) == 2 && parts[1] == "stream" {
-			handler.StreamExecution(w, r, parts[0])
+		id := parts[0]
+
+		if len(parts) == 1 && r.Method == http.MethodGet {
+			handler.GetExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
+			handler.CancelExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "stream" && r.Method == http.MethodGet {
+			handler.StreamExecution(w, r, id)
 		} else {
-			http.Error(w, "Not found", http.StatusNotFound)
+			http.Error(w, "Not Found", http.StatusNotFound)
 		}
-	})
+	}))
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -488,21 +498,39 @@ print("END ` + identity + `")
 	}
 }
 
+func mockAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Inject a dummy user so the handlers don't fail the context check
+		dummyUser := &api.User{
+			ID:       "test-user-id",
+			UserName: "testrunner",
+		}
+		ctx := context.WithValue(r.Context(), api.UserContextKey, dummyUser)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
 func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
 	addr := startWorkerd(t)
 	grpcClient := clientFor(t, addr)
 
+	// 1. Initialize the new auth stores to satisfy the constructor
 	store := api.NewInMemoryStore()
 	manager := api.NewExecutionManager(store)
-	handler := api.NewHandler(grpcClient, manager)
+	userStore := api.NewInMemoryUserStore()                                 // <-- Added
+	sessionStore := api.NewInMemorySessionStore()                           // <-- Added
+	handler := api.NewHandler(grpcClient, manager, userStore, sessionStore) // <-- Updated
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+
+	// 2. Wrap all test routes in the mock middleware
+	mux.HandleFunc("/v1/executions", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			handler.CreateExecution(w, r)
 		}
-	})
-	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+
+	mux.HandleFunc("/v1/executions/", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
 		parts := strings.Split(path, "/")
 		id := parts[0]
@@ -511,10 +539,12 @@ func TestExecutionLifecycle_StatesAndCancellation(t *testing.T) {
 			handler.GetExecution(w, r, id)
 		} else if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
 			handler.CancelExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "stream" && r.Method == http.MethodGet {
+			handler.StreamExecution(w, r, id)
 		} else {
 			http.Error(w, "Not Found", http.StatusNotFound)
 		}
-	})
+	}))
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -605,27 +635,37 @@ func TestExecutionLifecycle_WebSocketFlow(t *testing.T) {
 	addr := startWorkerd(t)
 	grpcClient := clientFor(t, addr)
 
+	// 1. Initialize the new auth stores to satisfy the constructor
 	store := api.NewInMemoryStore()
 	manager := api.NewExecutionManager(store)
-	handler := api.NewHandler(grpcClient, manager)
+	userStore := api.NewInMemoryUserStore()                                 // <-- Added
+	sessionStore := api.NewInMemorySessionStore()                           // <-- Added
+	handler := api.NewHandler(grpcClient, manager, userStore, sessionStore) // <-- Updated
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/executions", func(w http.ResponseWriter, r *http.Request) {
+
+	// 2. Wrap all test routes in the mock middleware
+	mux.HandleFunc("/v1/executions", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			handler.CreateExecution(w, r)
 		}
-	})
-	mux.HandleFunc("/v1/executions/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+
+	mux.HandleFunc("/v1/executions/", mockAuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/v1/executions/")
 		parts := strings.Split(path, "/")
 		id := parts[0]
 
 		if len(parts) == 1 && r.Method == http.MethodGet {
 			handler.GetExecution(w, r, id)
+		} else if len(parts) == 2 && parts[1] == "cancel" && r.Method == http.MethodPost {
+			handler.CancelExecution(w, r, id)
 		} else if len(parts) == 2 && parts[1] == "stream" && r.Method == http.MethodGet {
 			handler.StreamExecution(w, r, id)
+		} else {
+			http.Error(w, "Not Found", http.StatusNotFound)
 		}
-	})
+	}))
 
 	server := httptest.NewServer(mux)
 	defer server.Close()

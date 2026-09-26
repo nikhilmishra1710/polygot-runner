@@ -29,6 +29,15 @@ go build -o server ./cmd/server
 ./server
 ```
 
+## Running tests
+
+```bash
+go test -c ./tests -o tmp/integration.test
+sudo ./tmp/integration.test
+```
+
+Add optional -test.v for verbose test output
+
 The API will be available at http://localhost:8080
 
 ## API Endpoints
@@ -38,6 +47,7 @@ The API will be available at http://localhost:8080
 Execute code in a sandboxed environment.
 
 **Request:**
+
 ```json
 {
   "language": "python",
@@ -52,6 +62,7 @@ Execute code in a sandboxed environment.
 ```
 
 **Response:**
+
 ```json
 {
   "id": "execution-123",
