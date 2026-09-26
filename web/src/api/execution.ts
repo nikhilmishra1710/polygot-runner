@@ -17,6 +17,7 @@ export async function createExecution(
   const response = await fetch(`${API_HTTP_BASE}/executions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(request),
   });
 
